@@ -1,65 +1,88 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import detectEthereumProvider from "@metamask/detect-provider";
+import { loginMessage } from "@/lib/messages";
+
+type AuthState = {
+  status: "idle" | "connecting" | "authenticated" | "error";
+  address?: string;
+  error?: string;
+};
 
 export default function Home() {
+  const [auth, setAuth] = useState<AuthState>({ status: "idle" });
+
+  const handleLogin = async () => {
+    try {
+      setAuth({ status: "connecting" });
+      const provider: any = await detectEthereumProvider();
+      if (!provider) throw new Error("MetaMask not found");
+
+      const accounts = await provider.request({ method: "eth_requestAccounts" });
+      const address = (accounts[0] as string) || "";
+      if (!address) throw new Error("Wallet address missing");
+
+      const nonceRes = await fetch("/api/auth/nonce");
+      const nonceJson = await nonceRes.json();
+      if (!nonceRes.ok) throw new Error(nonceJson.error || "Failed to get nonce");
+      const { nonce } = nonceJson;
+
+      const message = loginMessage(nonce);
+      const signature = await provider.request({
+        method: "personal_sign",
+        params: [message, address],
+      });
+
+      const verifyRes = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, signature }),
+      });
+      const verifyJson = await verifyRes.json();
+      if (!verifyRes.ok) throw new Error(verifyJson.error || "Verify failed");
+
+      setAuth({ status: "authenticated", address });
+    } catch (err: any) {
+      setAuth({ status: "error", error: err?.message || "Unknown error" });
+    }
+  };
+
+  const handleCheckSession = async () => {
+    const res = await fetch("/api/auth/me");
+    const json = await res.json();
+    if (json.authenticated) {
+      setAuth({ status: "authenticated", address: json.walletAddress });
+    } else {
+      setAuth({ status: "idle" });
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <main className="flex flex-col gap-4">
+      <h1 className="text-2xl font-semibold">Wallet Auth (Nonce + personal_sign)</h1>
+      <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={handleLogin}
+            className="w-fit rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-black hover:bg-emerald-400"
+            disabled={auth.status === "connecting"}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            {auth.status === "connecting" ? "Connecting..." : "Connect & Verify"}
+          </button>
+          <button
+            onClick={handleCheckSession}
+            className="w-fit rounded-md border border-slate-700 px-4 py-2 text-sm hover:border-slate-500"
           >
-            Documentation
-          </a>
+            Check Session
+          </button>
+          <div className="text-sm text-slate-200">
+            Status: {auth.status}
+            {auth.address ? ` | ${auth.address}` : ""}
+          </div>
+          {auth.error && <div className="text-sm text-red-400">Error: {auth.error}</div>}
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }
