@@ -83,6 +83,35 @@ export default function Home() {
           {auth.error && <div className="text-sm text-red-400">Error: {auth.error}</div>}
         </div>
       </div>
+
+      {/* Quick Actions */}
+      <div className="mt-8">
+        <h2 className="mb-4 text-xl font-semibold">Quick Actions</h2>
+        <div className="grid gap-4 md:grid-cols-2">
+          <a
+            href="/issue"
+            className="group rounded-xl border border-slate-700 bg-slate-900/60 p-6 transition-all hover:border-emerald-500 hover:bg-slate-900"
+          >
+            <div className="mb-2 text-3xl">📜</div>
+            <h3 className="mb-2 text-lg font-semibold text-white group-hover:text-emerald-400">
+              Issue Certificate
+            </h3>
+            <p className="text-sm text-slate-400">
+              Generate and publish certificates to blockchain
+            </p>
+          </a>
+
+          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-6 opacity-50">
+            <div className="mb-2 text-3xl">🔍</div>
+            <h3 className="mb-2 text-lg font-semibold text-white">
+              Verify Certificate
+            </h3>
+            <p className="text-sm text-slate-400">
+              Check certificate authenticity (Coming soon)
+            </p>
+          </div>
+        </div>
+      </div>
     </main>
   );
 }

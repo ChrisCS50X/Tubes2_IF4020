@@ -14,6 +14,8 @@
     "axios": "^1.13.2",
     "ethers": "^6.16.0",
     "iron-session": "^8.0.4",
+    "jspdf": "^3.0.4",
+    "jspdf-autotable": "^5.0.2",
     "nanoid": "^5.1.6",
     "next": "16.0.10",
     "pdf-lib": "^1.17.1",
