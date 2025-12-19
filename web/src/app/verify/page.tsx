@@ -6,6 +6,7 @@ import { PDFDocument, StandardFonts } from "pdf-lib";
 import type { PDFFont } from "pdf-lib";
 import { ethers } from "ethers";
 import type { Interface, LogDescription, TransactionReceipt } from "ethers";
+import QRCode from "qrcode";
 import { decryptAesGcm, importAesKeyBase64, EncryptedPayload } from "@/lib/crypto/aes";
 import { sha256 } from "@/lib/crypto/hash";
 import { getCertificateRegistry, getProvider } from "@/lib/contract";
@@ -156,9 +157,24 @@ export default function VerifyCertificatePage() {
           )
         : "";
 
-      const pdfWithUrl = shareUrl
-        ? await embedUrlInPdf(decrypted, shareUrl)
-        : await embedUrlInPdf(decrypted, "Verification URL unavailable");
+      let qrDataUrl: string | null = null;
+      if (shareUrl) {
+        try {
+          qrDataUrl = await QRCode.toDataURL(shareUrl, {
+            errorCorrectionLevel: "M",
+            margin: 1,
+            width: 220,
+          });
+        } catch {
+          qrDataUrl = null;
+        }
+      }
+
+      const pdfWithUrl = await embedUrlInPdf(
+        decrypted,
+        shareUrl || "Verification URL unavailable",
+        qrDataUrl || undefined
+      );
 
       const pdfBuffer = toArrayBuffer(pdfWithUrl);
       const blob = new Blob([pdfBuffer], { type: "application/pdf" });
@@ -554,7 +570,11 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return copy.buffer;
 }
 
-async function embedUrlInPdf(pdfBytes: ArrayBuffer, url: string): Promise<Uint8Array> {
+async function embedUrlInPdf(
+  pdfBytes: ArrayBuffer,
+  url: string,
+  qrDataUrl?: string
+): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.load(pdfBytes);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const pages = pdfDoc.getPages();
@@ -567,7 +587,9 @@ async function embedUrlInPdf(pdfBytes: ArrayBuffer, url: string): Promise<Uint8A
   const lineHeight = fontSize + 2;
   const marginX = 36;
   const marginY = 72;
-  const maxWidth = width - marginX * 2;
+  const qrSize = 72;
+  const qrPadding = 12;
+  const maxWidth = width - marginX * 2 - (qrDataUrl ? qrSize + qrPadding : 0);
 
   const urlLines = wrapText(url, font, fontSize, maxWidth);
   const lines = ["URL Ijazah:", ...urlLines];
@@ -577,6 +599,17 @@ async function embedUrlInPdf(pdfBytes: ArrayBuffer, url: string): Promise<Uint8A
       x: marginX,
       y: marginY + i * lineHeight,
       size: fontSize,
+    });
+  }
+
+  if (qrDataUrl) {
+    const qrBytes = await fetch(qrDataUrl).then((res) => res.arrayBuffer());
+    const qrImage = await pdfDoc.embedPng(qrBytes);
+    page.drawImage(qrImage, {
+      x: width - marginX - qrSize,
+      y: marginY,
+      width: qrSize,
+      height: qrSize,
     });
   }
 

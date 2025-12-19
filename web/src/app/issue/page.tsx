@@ -28,8 +28,34 @@ export default function IssueCertificatePage() {
 
   const [issuerPrivateKey, setIssuerPrivateKey] = useState("");
   const [formState, setFormState] = useState<FormState>({ status: "idle" });
+  const [sessionStatus, setSessionStatus] = useState<
+    "checking" | "authenticated" | "unauthenticated"
+  >("checking");
+  const [sessionAddress, setSessionAddress] = useState<string | null>(null);
 
   const [origin, setOrigin] = useState("");
+
+  const checkSession = async () => {
+    setSessionStatus("checking");
+    try {
+      const res = await fetch("/api/auth/me", { cache: "no-store" });
+      const json = await res.json();
+      if (json.authenticated) {
+        setSessionStatus("authenticated");
+        setSessionAddress(json.walletAddress || null);
+      } else {
+        setSessionStatus("unauthenticated");
+        setSessionAddress(null);
+      }
+    } catch {
+      setSessionStatus("unauthenticated");
+      setSessionAddress(null);
+    }
+  };
+
+  useEffect(() => {
+    checkSession();
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -112,6 +138,46 @@ export default function IssueCertificatePage() {
     setIssuerPrivateKey("");
   };
 
+  if (sessionStatus === "checking") {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
+        <div className="mx-auto max-w-xl rounded-2xl border border-slate-700 bg-slate-900/60 p-6 shadow-xl">
+          <div className="flex items-center gap-3 text-slate-200">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-emerald-500" />
+            <span>Checking wallet session...</span>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (sessionStatus !== "authenticated") {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
+        <div className="mx-auto max-w-xl rounded-2xl border border-slate-700 bg-slate-900/60 p-6 shadow-xl">
+          <h1 className="mb-2 text-2xl font-semibold text-white">Issue Ijazah</h1>
+          <p className="text-sm text-slate-400">
+            Please connect your wallet on the home page to access the issuer form.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <a
+              href="/"
+              className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-black hover:bg-emerald-400"
+            >
+              Go to Login
+            </a>
+            <button
+              onClick={checkSession}
+              className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-300 hover:border-slate-500 hover:bg-slate-800"
+            >
+              Retry Session Check
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
       <div className="mx-auto max-w-5xl">
@@ -121,6 +187,9 @@ export default function IssueCertificatePage() {
           <p className="text-slate-400">
             Generate, encrypt, and publish certificate to blockchain
           </p>
+          {sessionAddress && (
+            <p className="mt-2 text-xs text-slate-500">Authenticated as {sessionAddress}</p>
+          )}
         </div>
 
         {/* Main Content */}

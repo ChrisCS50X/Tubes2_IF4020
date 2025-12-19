@@ -7,6 +7,8 @@ import { createIssueTypedData, generateCertificateId, generateSalt, signTypedDat
 import { getCertificateRegistry } from "@/lib/contract";
 import { ethers } from "ethers";
 import { CHAIN_ID } from "@/lib/env";
+import { getIronSession } from "iron-session";
+import { sessionOptions, AuthSession } from "@/lib/session";
 
 /**
  * Convert Node.js Buffer to ArrayBuffer
@@ -42,6 +44,15 @@ export type IssueCertificateResponse = {
  */
 export async function POST(request: NextRequest) {
   try {
+    const response = new NextResponse(null);
+    const session = await getIronSession<AuthSession>(request, response, sessionOptions);
+    if (!session.authenticated || !session.walletAddress) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized" },
+        { status: 401, headers: response.headers }
+      );
+    }
+
     const body: IssueCertificateRequest = await request.json();
     const { certificateData, issuerPrivateKey } = body;
 
@@ -90,6 +101,12 @@ export async function POST(request: NextRequest) {
     // Create wallet from private key
     const wallet = new ethers.Wallet(issuerPrivateKey);
     const issuerAddress = wallet.address;
+    if (issuerAddress.toLowerCase() !== session.walletAddress.toLowerCase()) {
+      return NextResponse.json(
+        { success: false, error: "Issuer wallet does not match authenticated session" },
+        { status: 403, headers: response.headers }
+      );
+    }
 
     // Generate salt and timestamp
     const salt = generateSalt();

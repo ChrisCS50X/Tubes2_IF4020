@@ -3,6 +3,7 @@
 import { useState } from "react";
 import detectEthereumProvider from "@metamask/detect-provider";
 import { loginMessage } from "@/lib/messages";
+import { CONTRACT_ADDRESS } from "@/lib/env";
 
 type AuthState = {
   status: "idle" | "connecting" | "authenticated" | "error";
@@ -87,7 +88,7 @@ export default function Home() {
       {/* Quick Actions */}
       <div className="mt-8">
         <h2 className="mb-4 text-xl font-semibold">Quick Actions</h2>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-3">
           <a
             href="/issue"
             className="group rounded-xl border border-slate-700 bg-slate-900/60 p-6 transition-all hover:border-emerald-500 hover:bg-slate-900"
@@ -112,7 +113,41 @@ export default function Home() {
               Decrypt and verify certificates against blockchain
             </p>
           </a>
+
+          <a
+            href="/revoke"
+            className="group rounded-xl border border-slate-700 bg-slate-900/60 p-6 transition-all hover:border-rose-500 hover:bg-slate-900"
+          >
+            <div className="mb-2 text-3xl">X</div>
+            <h3 className="mb-2 text-lg font-semibold text-white group-hover:text-rose-400">
+              Revoke Certificate
+            </h3>
+            <p className="text-sm text-slate-400">
+              Revoke invalid or withdrawn certificates
+            </p>
+          </a>
         </div>
+      </div>
+
+      <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4">
+        <h2 className="mb-2 text-lg font-semibold">Contract Explorer</h2>
+        {CONTRACT_ADDRESS ? (
+          <div className="space-y-2 text-sm text-slate-300">
+            <div className="break-all">Address: {CONTRACT_ADDRESS}</div>
+            <a
+              href={`https://sepolia.etherscan.io/address/${CONTRACT_ADDRESS}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block text-emerald-400 hover:underline"
+            >
+              View on Etherscan
+            </a>
+          </div>
+        ) : (
+          <p className="text-sm text-amber-400">
+            Missing `NEXT_PUBLIC_CONTRACT_ADDRESS` in environment.
+          </p>
+        )}
       </div>
     </main>
   );
