@@ -100,16 +100,18 @@ export default function Home() {
               Generate and publish certificates to blockchain
             </p>
           </a>
-
-          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-6 opacity-50">
+          <a
+            href="/verify"
+            className="group rounded-xl border border-slate-700 bg-slate-900/60 p-6 transition-all hover:border-emerald-500 hover:bg-slate-900"
+          >
             <div className="mb-2 text-3xl">🔍</div>
-            <h3 className="mb-2 text-lg font-semibold text-white">
+            <h3 className="mb-2 text-lg font-semibold text-white group-hover:text-emerald-400">
               Verify Certificate
             </h3>
             <p className="text-sm text-slate-400">
-              Check certificate authenticity (Coming soon)
+              Decrypt and verify certificates against blockchain
             </p>
-          </div>
+          </a>
         </div>
       </div>
     </main>

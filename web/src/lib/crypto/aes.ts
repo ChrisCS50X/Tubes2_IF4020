@@ -55,18 +55,35 @@ function combineGcmInput(ciphertext: ArrayBuffer, tag: ArrayBuffer) {
 }
 
 function toBase64Url(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  bytes.forEach((b) => (binary += String.fromCharCode(b)));
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  if (typeof btoa === "function") {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    bytes.forEach((b) => (binary += String.fromCharCode(b)));
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(buffer)
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  }
+  throw new Error("Base64 encoder unavailable");
 }
 
 function fromBase64Url(b64url: string): ArrayBuffer {
   const base64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
   const pad = base64.length % 4 === 0 ? "" : "=".repeat(4 - (base64.length % 4));
   const normalized = base64 + pad;
-  const binary = atob(normalized);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
+  if (typeof atob === "function") {
+    const binary = atob(normalized);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+  }
+  if (typeof Buffer !== "undefined") {
+    const bytes = Buffer.from(normalized, "base64");
+    return new Uint8Array(bytes).buffer;
+  }
+  throw new Error("Base64 decoder unavailable");
 }

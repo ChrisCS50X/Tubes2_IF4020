@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CertificateData } from "@/lib/pdf/generateCertificate";
 
 type FormState = {
@@ -28,6 +28,26 @@ export default function IssueCertificatePage() {
 
   const [issuerPrivateKey, setIssuerPrivateKey] = useState("");
   const [formState, setFormState] = useState<FormState>({ status: "idle" });
+
+  const [origin, setOrigin] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setOrigin(window.location.origin);
+    }
+  }, []);
+
+  const verificationUrl = useMemo(() => {
+    if (formState.status !== "success") return "";
+    if (!origin || !formState.ipfsCid || !formState.encryptionKey || !formState.transactionHash) {
+      return "";
+    }
+    const url = new URL("/verify", origin);
+    url.searchParams.set("file", `ipfs://${formState.ipfsCid}`);
+    url.searchParams.set("key", formState.encryptionKey);
+    url.searchParams.set("tx", formState.transactionHash);
+    return url.toString();
+  }, [formState.status, formState.ipfsCid, formState.encryptionKey, formState.transactionHash, origin]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -391,6 +411,28 @@ export default function IssueCertificatePage() {
                     ⚠️ Save this key securely! It's needed to decrypt the certificate.
                   </p>
                 </div>
+
+                {verificationUrl && (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-400">
+                      Verification URL
+                    </label>
+                    <div className="rounded-lg border border-slate-600 bg-slate-800 px-4 py-2">
+                      <code className="break-all text-xs text-emerald-400">
+                        {verificationUrl}
+                      </code>
+                    </div>
+                    <a
+                      href={verificationUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 inline-block text-xs text-emerald-400 hover:underline"
+                    >
+                      Open verify page
+                    </a>
+                  </div>
+                )}
+
 
                 {/* Reset Button */}
                 <button
