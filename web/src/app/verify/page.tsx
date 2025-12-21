@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { PDFDocument, StandardFonts } from "pdf-lib";
-import type { PDFFont } from "pdf-lib";
+import { PDFDocument, PDFName, PDFString, StandardFonts } from "pdf-lib";
+import type { PDFFont, PDFPage } from "pdf-lib";
 import { ethers } from "ethers";
 import type { Interface, LogDescription, TransactionReceipt } from "ethers";
 import QRCode from "qrcode";
@@ -173,7 +173,8 @@ export default function VerifyCertificatePage() {
       const pdfWithUrl = await embedUrlInPdf(
         decrypted,
         shareUrl || "Verification URL unavailable",
-        qrDataUrl || undefined
+        qrDataUrl || undefined,
+        shareUrl || undefined
       );
 
       const pdfBuffer = toArrayBuffer(pdfWithUrl);
@@ -573,7 +574,8 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 async function embedUrlInPdf(
   pdfBytes: ArrayBuffer,
   url: string,
-  qrDataUrl?: string
+  qrDataUrl?: string,
+  linkUrl?: string
 ): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.load(pdfBytes);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -602,15 +604,35 @@ async function embedUrlInPdf(
     });
   }
 
+  if (linkUrl) {
+    const textHeight = lines.length * lineHeight;
+    addLinkAnnotation(page, linkUrl, {
+      x: marginX,
+      y: marginY - 2,
+      width: maxWidth,
+      height: textHeight + 4,
+    });
+  }
+
   if (qrDataUrl) {
     const qrBytes = await fetch(qrDataUrl).then((res) => res.arrayBuffer());
     const qrImage = await pdfDoc.embedPng(qrBytes);
+    const qrX = width - marginX - qrSize;
     page.drawImage(qrImage, {
-      x: width - marginX - qrSize,
+      x: qrX,
       y: marginY,
       width: qrSize,
       height: qrSize,
     });
+
+    if (linkUrl) {
+      addLinkAnnotation(page, linkUrl, {
+        x: qrX,
+        y: marginY,
+        width: qrSize,
+        height: qrSize,
+      });
+    }
   }
 
   return pdfDoc.save();
@@ -630,4 +652,25 @@ function wrapText(text: string, font: PDFFont, fontSize: number, maxWidth: numbe
   }
   if (current) lines.push(current);
   return lines;
+}
+
+function addLinkAnnotation(
+  page: PDFPage,
+  url: string,
+  rect: { x: number; y: number; width: number; height: number }
+) {
+  const { x, y, width, height } = rect;
+  const context = page.doc.context;
+  const annotation = context.obj({
+    Type: PDFName.of("Annot"),
+    Subtype: PDFName.of("Link"),
+    Rect: [x, y, x + width, y + height],
+    Border: [0, 0, 0],
+    A: context.obj({
+      S: PDFName.of("URI"),
+      URI: PDFString.of(url),
+    }),
+  });
+  const annotationRef = context.register(annotation);
+  page.node.addAnnot(annotationRef);
 }
