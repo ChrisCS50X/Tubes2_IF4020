@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { PDFDocument, PDFName, PDFString, StandardFonts } from "pdf-lib";
 import type { PDFFont, PDFPage } from "pdf-lib";
@@ -38,7 +38,7 @@ type VerifyResult = {
   storageMatch: boolean;
 };
 
-export default function VerifyCertificatePage() {
+function VerifyCertificatePageInner() {
   const searchParams = useSearchParams();
   const [form, setForm] = useState<VerifyForm>({ file: "", key: "", tx: "" });
   const [status, setStatus] = useState<VerifyStatus>("idle");
@@ -480,6 +480,25 @@ export default function VerifyCertificatePage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function VerifyCertificatePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
+          <div className="mx-auto max-w-xl rounded-2xl border border-slate-700 bg-slate-900/60 p-6 shadow-xl">
+            <div className="flex items-center gap-3 text-slate-200">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-emerald-500" />
+              <span>Loading verifier...</span>
+            </div>
+          </div>
+        </main>
+      }
+    >
+      <VerifyCertificatePageInner />
+    </Suspense>
   );
 }
 

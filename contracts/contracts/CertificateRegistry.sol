@@ -36,6 +36,31 @@ contract CertificateRegistry is EIP712, Ownable, ReentrancyGuard {
     mapping(bytes32 => bool) private issuedByDocAndIssuer; // keccak256(docHash, issuer) to prevent duplicate issuance
     mapping(address => bool) public isAuthorizedIssuer;
 
+    // Track issuer list for UI / enumeration
+    address[] private issuerList;
+    mapping(address => uint256) private issuerIndexPlusOne; // 1-based index into issuerList
+
+    // Multi-sig style issuer update proposals (managed by institution/owner, approved by issuers)
+    enum IssuerUpdateAction {
+        None,
+        Add,
+        Rotate
+    }
+
+    struct IssuerUpdateProposal {
+        IssuerUpdateAction action;
+        address issuer; // for Rotate: current issuer address; for Add: unused (0)
+        address newIssuer; // for Add/Rotate: the new issuer address
+        uint32 approvals;
+        bool executed;
+        uint64 createdAt;
+    }
+
+    uint256 public issuerUpdateThreshold = 1;
+    uint256 public nextIssuerUpdateProposalId = 1;
+    mapping(uint256 => IssuerUpdateProposal) public issuerUpdateProposals;
+    mapping(uint256 => mapping(address => bool)) private issuerUpdateApprovedBy;
+
     event CertificateIssued(
         bytes32 indexed certificateId,
         address indexed issuer,
@@ -47,6 +72,17 @@ contract CertificateRegistry is EIP712, Ownable, ReentrancyGuard {
     event CertificateRevoked(bytes32 indexed certificateId, address indexed issuer, string reason, uint64 revokedAt);
     event IssuerUpdated(address indexed issuer, bool authorized);
 
+    event IssuerUpdateThresholdUpdated(uint256 threshold);
+    event IssuerUpdateProposed(
+        uint256 indexed proposalId,
+        IssuerUpdateAction action,
+        address indexed issuer,
+        address indexed newIssuer,
+        uint64 createdAt
+    );
+    event IssuerUpdateApproved(uint256 indexed proposalId, address indexed approver, uint32 approvals);
+    event IssuerUpdateExecuted(uint256 indexed proposalId, IssuerUpdateAction action, address issuer, address newIssuer);
+
     constructor(address initialOwner) EIP712("CertificateRegistry", "1") Ownable(initialOwner) {}
 
     modifier onlyIssuerOrOwner(address issuer) {
@@ -54,11 +90,35 @@ contract CertificateRegistry is EIP712, Ownable, ReentrancyGuard {
         _;
     }
 
+    modifier onlyAuthorizedIssuer() {
+        require(isAuthorizedIssuer[msg.sender], "Issuer not authorized");
+        _;
+    }
+
+    function getIssuers() external view returns (address[] memory) {
+        return issuerList;
+    }
+
+    function hasApprovedIssuerUpdate(uint256 proposalId, address approver) external view returns (bool) {
+        return issuerUpdateApprovedBy[proposalId][approver];
+    }
+
+    /// @notice Owner configures approvals required for issuer updates.
+    function setIssuerUpdateThreshold(uint256 threshold) external onlyOwner {
+        require(threshold > 0, "Threshold zero");
+        issuerUpdateThreshold = threshold;
+        emit IssuerUpdateThresholdUpdated(threshold);
+    }
+
     /// @notice Owner adds an issuer to the whitelist.
     function addIssuer(address issuer) external onlyOwner {
         require(issuer != address(0), "Issuer zero");
         require(!isAuthorizedIssuer[issuer], "Already issuer");
         isAuthorizedIssuer[issuer] = true;
+
+        issuerList.push(issuer);
+        issuerIndexPlusOne[issuer] = issuerList.length;
+
         emit IssuerUpdated(issuer, true);
     }
 
@@ -66,7 +126,122 @@ contract CertificateRegistry is EIP712, Ownable, ReentrancyGuard {
     function removeIssuer(address issuer) external onlyOwner {
         require(isAuthorizedIssuer[issuer], "Not issuer");
         isAuthorizedIssuer[issuer] = false;
+
+        uint256 idxPlusOne = issuerIndexPlusOne[issuer];
+        if (idxPlusOne != 0) {
+            uint256 idx = idxPlusOne - 1;
+            uint256 lastIdx = issuerList.length - 1;
+            if (idx != lastIdx) {
+                address lastIssuer = issuerList[lastIdx];
+                issuerList[idx] = lastIssuer;
+                issuerIndexPlusOne[lastIssuer] = idx + 1;
+            }
+            issuerList.pop();
+            issuerIndexPlusOne[issuer] = 0;
+        }
+
         emit IssuerUpdated(issuer, false);
+    }
+
+    /// @notice Owner proposes adding a new issuer (requires approvals from authorized issuers).
+    function proposeAddIssuer(address newIssuer) external onlyOwner returns (uint256 proposalId) {
+        require(newIssuer != address(0), "Issuer zero");
+        require(!isAuthorizedIssuer[newIssuer], "Already issuer");
+
+        proposalId = nextIssuerUpdateProposalId++;
+        issuerUpdateProposals[proposalId] = IssuerUpdateProposal({
+            action: IssuerUpdateAction.Add,
+            issuer: address(0),
+            newIssuer: newIssuer,
+            approvals: 0,
+            executed: false,
+            createdAt: uint64(block.timestamp)
+        });
+
+        emit IssuerUpdateProposed(proposalId, IssuerUpdateAction.Add, address(0), newIssuer, uint64(block.timestamp));
+    }
+
+    /// @notice Owner proposes rotating an issuer key (old issuer removed, new issuer added).
+    function proposeRotateIssuer(address issuer, address newIssuer) external onlyOwner returns (uint256 proposalId) {
+        require(isAuthorizedIssuer[issuer], "Not issuer");
+        require(newIssuer != address(0), "Issuer zero");
+        require(!isAuthorizedIssuer[newIssuer], "Already issuer");
+        require(issuer != newIssuer, "Same issuer");
+
+        proposalId = nextIssuerUpdateProposalId++;
+        issuerUpdateProposals[proposalId] = IssuerUpdateProposal({
+            action: IssuerUpdateAction.Rotate,
+            issuer: issuer,
+            newIssuer: newIssuer,
+            approvals: 0,
+            executed: false,
+            createdAt: uint64(block.timestamp)
+        });
+
+        emit IssuerUpdateProposed(proposalId, IssuerUpdateAction.Rotate, issuer, newIssuer, uint64(block.timestamp));
+    }
+
+    /// @notice Authorized issuer approves a pending update proposal.
+    function approveIssuerUpdate(uint256 proposalId) external onlyAuthorizedIssuer {
+        IssuerUpdateProposal storage p = issuerUpdateProposals[proposalId];
+        require(p.action != IssuerUpdateAction.None, "Proposal missing");
+        require(!p.executed, "Already executed");
+        require(!issuerUpdateApprovedBy[proposalId][msg.sender], "Already approved");
+
+        issuerUpdateApprovedBy[proposalId][msg.sender] = true;
+        p.approvals += 1;
+
+        emit IssuerUpdateApproved(proposalId, msg.sender, p.approvals);
+    }
+
+    /// @notice Owner executes an approved update proposal.
+    function executeIssuerUpdate(uint256 proposalId) external onlyOwner {
+        IssuerUpdateProposal storage p = issuerUpdateProposals[proposalId];
+        require(p.action != IssuerUpdateAction.None, "Proposal missing");
+        require(!p.executed, "Already executed");
+        require(p.approvals >= issuerUpdateThreshold, "Insufficient approvals");
+
+        p.executed = true;
+
+        if (p.action == IssuerUpdateAction.Add) {
+            // reuse checks even if state changed since proposal
+            require(p.newIssuer != address(0), "Issuer zero");
+            require(!isAuthorizedIssuer[p.newIssuer], "Already issuer");
+            isAuthorizedIssuer[p.newIssuer] = true;
+            issuerList.push(p.newIssuer);
+            issuerIndexPlusOne[p.newIssuer] = issuerList.length;
+            emit IssuerUpdated(p.newIssuer, true);
+        } else if (p.action == IssuerUpdateAction.Rotate) {
+            require(isAuthorizedIssuer[p.issuer], "Not issuer");
+            require(p.newIssuer != address(0), "Issuer zero");
+            require(!isAuthorizedIssuer[p.newIssuer], "Already issuer");
+
+            // remove old
+            isAuthorizedIssuer[p.issuer] = false;
+            {
+                uint256 idxPlusOne = issuerIndexPlusOne[p.issuer];
+                if (idxPlusOne != 0) {
+                    uint256 idx = idxPlusOne - 1;
+                    uint256 lastIdx = issuerList.length - 1;
+                    if (idx != lastIdx) {
+                        address lastIssuer = issuerList[lastIdx];
+                        issuerList[idx] = lastIssuer;
+                        issuerIndexPlusOne[lastIssuer] = idx + 1;
+                    }
+                    issuerList.pop();
+                    issuerIndexPlusOne[p.issuer] = 0;
+                }
+            }
+            emit IssuerUpdated(p.issuer, false);
+
+            // add new
+            isAuthorizedIssuer[p.newIssuer] = true;
+            issuerList.push(p.newIssuer);
+            issuerIndexPlusOne[p.newIssuer] = issuerList.length;
+            emit IssuerUpdated(p.newIssuer, true);
+        }
+
+        emit IssuerUpdateExecuted(proposalId, p.action, p.issuer, p.newIssuer);
     }
 
     /// @notice Issue a new certificate. Signature must be produced by the issuer over the typed data.

@@ -46,10 +46,11 @@ describe("CertificateRegistry", () => {
   let owner: any;
   let issuer: any;
   let other: any;
+  let issuer2: any;
   let chainId: bigint;
 
   beforeEach(async () => {
-    [owner, issuer, other] = await ethers.getSigners();
+    [owner, issuer, issuer2, other] = await ethers.getSigners();
     const Registry = await ethers.getContractFactory("CertificateRegistry");
     registry = (await Registry.deploy(owner.address)) as CertificateRegistry;
     chainId = (await ethers.provider.getNetwork()).chainId;
@@ -187,5 +188,59 @@ describe("CertificateRegistry", () => {
     await registry.issueCertificate(certificateId, docHash, storageURI, issuer.address, issuedAt, salt, signature);
 
     await expect(registry.connect(other).revokeCertificate(certificateId, "nope")).to.be.revertedWith("Not authorized");
+  });
+
+  it("tracks issuer list on add/remove", async () => {
+    let issuers = await registry.getIssuers();
+    expect(issuers.length).to.equal(1);
+    expect(issuers[0]).to.equal(issuer.address);
+
+    await registry.addIssuer(issuer2.address);
+    issuers = await registry.getIssuers();
+    expect(issuers.length).to.equal(2);
+    expect(issuers).to.include(issuer.address);
+    expect(issuers).to.include(issuer2.address);
+
+    await registry.removeIssuer(issuer.address);
+    issuers = await registry.getIssuers();
+    expect(issuers.length).to.equal(1);
+    expect(issuers[0]).to.equal(issuer2.address);
+  });
+
+  it("executes add issuer via multi-sig proposal", async () => {
+    await registry.setIssuerUpdateThreshold(1);
+    const tx = await registry.proposeAddIssuer(issuer2.address);
+    const receipt = await tx.wait();
+    const event = receipt.logs.find((l: any) => l.fragment?.name === "IssuerUpdateProposed");
+    const proposalId = event.args.proposalId as bigint;
+
+    await expect(registry.connect(issuer).approveIssuerUpdate(proposalId))
+      .to.emit(registry, "IssuerUpdateApproved")
+      .withArgs(proposalId, issuer.address, 1);
+
+    await expect(registry.executeIssuerUpdate(proposalId))
+      .to.emit(registry, "IssuerUpdateExecuted")
+      .withArgs(proposalId, 1, ethers.ZeroAddress, issuer2.address);
+
+    expect(await registry.isAuthorizedIssuer(issuer2.address)).to.equal(true);
+    const issuers = await registry.getIssuers();
+    expect(issuers).to.include(issuer2.address);
+  });
+
+  it("executes rotate issuer via multi-sig proposal", async () => {
+    await registry.setIssuerUpdateThreshold(1);
+    const tx = await registry.proposeRotateIssuer(issuer.address, issuer2.address);
+    const receipt = await tx.wait();
+    const event = receipt.logs.find((l: any) => l.fragment?.name === "IssuerUpdateProposed");
+    const proposalId = event.args.proposalId as bigint;
+
+    await registry.connect(issuer).approveIssuerUpdate(proposalId);
+    await registry.executeIssuerUpdate(proposalId);
+
+    expect(await registry.isAuthorizedIssuer(issuer.address)).to.equal(false);
+    expect(await registry.isAuthorizedIssuer(issuer2.address)).to.equal(true);
+    const issuers = await registry.getIssuers();
+    expect(issuers).to.not.include(issuer.address);
+    expect(issuers).to.include(issuer2.address);
   });
 });
