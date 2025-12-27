@@ -1,1 +1,64 @@
-# Tubes2_IF4020
+# Sistem Pencatatan Ijazah Digital Berbasis *Blockchain* atau *Centralized Immutable Ledger*
+
+> Maraknya ijazah palsu menuntut sistem pencatatan ijazah yang transparan. Blockchain dapat dimanfaatkan dengan ijazah digital yang ditandatangani rektor menggunakan kriptografi kunci publik dan fungsi hash.
+
+## Deskripsi Proyek
+
+Proyek ini merupakan implementasi **Sistem Pencatatan Ijazah Digital** berbasis **blockchain** atau **centralized immutable ledger** untuk menjamin keaslian dan integritas ijazah digital. Sistem dirancang untuk mengatasi pemalsuan ijazah dengan menyediakan mekanisme penerbitan, penyimpanan, pencabutan, dan verifikasi ijazah yang transparan dan tidak dapat diubah.
+
+Ijazah diterbitkan oleh **Admin Institusi** dalam bentuk dokumen digital (PDF, gambar, atau teks) yang di-hash menggunakan **SHA-256** dan ditandatangani secara digital menggunakan **ECDSA**. Dokumen ijazah disimpan secara **off-chain** dalam keadaan terenkripsi menggunakan **AES**, sementara metadata ijazah dicatat pada ledger untuk menjaga efisiensi dan privasi.
+
+Sistem mendukung dua transaksi utama, yaitu **Issue Certificate** dan **Revoke Certificate**. Publik dapat melakukan verifikasi keaslian ijazah melalui website dengan memanfaatkan transparansi dan sifat immutable dari ledger. Autentikasi Admin Institusi dilakukan menggunakan mekanisme kriptografi berbasis **signature nonce challenge**.
+
+## Daftar Fungsi
+
+### 1) Autentikasi Admin (Institusi)
+- **generateNonce(address)**  
+	Membuat nonce acak untuk proses login Admin berbasis wallet.  
+	(web/src/lib/nonce.ts)
+
+- **loginMessage(nonce)**  
+	Membuat pesan login yang harus ditandatangani wallet.  
+	(web/src/lib/messages.ts)
+
+- **Verifikasi Signature Login**  
+	Signature nonce diverifikasi di backend (API route auth/verify/route.ts).
+
+### 2) Pembuatan & Pemrosesan Ijazah
+- **generateCertificatePDF(data)**  
+	Membentuk dokumen ijazah (PDF) dari data input.  
+	(web/src/lib/pdf/generateCertificate.ts)
+
+- **sha256(fileBytes)**  
+	Menghitung hash dokumen ijazah menggunakan SHA-256.  
+	(web/src/lib/crypto/hash.ts)
+
+- **createIssueTypedData(data), signTypedData(...)**  
+	Menyiapkan dan menandatangani data ijazah secara digital (ECDSA, EIP-712).  
+	(web/src/lib/eip712.ts)
+
+### 3) Enkripsi & Penyimpanan Off-chain
+- **generateAesKey()**  
+	Membuat kunci AES untuk enkripsi dokumen ijazah.  
+	(web/src/lib/crypto/aes.ts)
+
+- **encryptAesGcm(key, data), decryptAesGcm(key, payload)**  
+	Mengenkripsi dan mendekripsi dokumen ijazah menggunakan AES-GCM.  
+	(web/src/lib/crypto/aes.ts)
+
+- **pinFile(name, content, mimeType)**  
+	Mengunggah file terenkripsi ke IPFS (off-chain storage) dan mengembalikan CID.  
+	(web/src/lib/ipfs/pinata.ts)
+
+### 4) Interaksi Smart Contract (On-chain)
+- **getCertificateRegistry(signerOrProvider)**  
+	Mendapatkan instance smart contract CertificateRegistry.  
+	(web/src/lib/contract.ts)
+
+- **issueCertificate(...)**  
+	Fungsi smart contract untuk mencatat metadata ijazah ke blockchain.  
+	(contracts/contracts/CertificateRegistry.sol)
+
+- **revokeCertificate(...)**  
+	Fungsi smart contract untuk mencabut ijazah.  
+	(contracts/contracts/CertificateRegistry.sol)
