@@ -73,7 +73,7 @@ Sebelum menjalankan aplikasi, pastikan sudah membuat file `.env` pada masing-mas
 Tambahkan variabel berikut ke file `contracts/.env`:
 
 ```env
-ALCHEMY_API_URL=https://eth-sepolia.g.alchemy.com/v2/EE-q9pXO02LXVEySEaHLq
+ALCHEMY_API_URL=
 SEPOLIA_PRIVATE_KEY=    # private key issuer/admin (Metamask) TANPA 0x
 ETHERSCAN_API_KEY=    # untuk verify kontrak
 ```
