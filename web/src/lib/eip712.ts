@@ -90,7 +90,7 @@ export function createRevokeTypedData(data: RevokeTypedData) {
  */
 export async function signTypedData(
   signer: ethers.Signer,
-  typedData: ReturnType<typeof createIssueTypedData>
+  typedData: ReturnType<typeof createIssueTypedData> | ReturnType<typeof createRevokeTypedData>
 ): Promise<string> {
   const signature = await signer.signTypedData(
     typedData.domain,
