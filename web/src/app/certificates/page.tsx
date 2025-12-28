@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getCertificateRegistry, getProvider } from "@/lib/contract";
 import { CONTRACT_ADDRESS, DEPLOY_BLOCK, DEPLOY_TX_HASH } from "@/lib/env";
 
@@ -28,7 +28,42 @@ export default function CertificatesPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "revoked">("all");
 
+  const loadRunIdRef = useRef(0);
+  const loadingRef = useRef(false);
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const isAlchemy429 = (err: any) => {
+    const code = err?.code ?? err?.error?.code;
+    const message = String(err?.message ?? err?.error?.message ?? "");
+    return code === 429 || message.includes("compute units") || message.includes("throughput") || message.includes("429");
+  };
+
+  const queryFilterWithRetry = async (
+    contract: any,
+    filter: any,
+    from: number,
+    to: number,
+    maxAttempts = 4
+  ) => {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await contract.queryFilter(filter, from, to);
+      } catch (err: any) {
+        attempt += 1;
+        if (!isAlchemy429(err) || attempt >= maxAttempts) throw err;
+        const backoffMs = 400 * Math.pow(2, attempt - 1);
+        await sleep(backoffMs);
+      }
+    }
+  };
+
   const loadIssued = async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    const runId = (loadRunIdRef.current += 1);
+
     setState("loading");
     setError(null);
     try {
@@ -54,7 +89,7 @@ export default function CertificatesPage() {
       const logs: any[] = [];
       for (let from = startBlock; from <= latestBlock; from += rangeSize) {
         const to = Math.min(from + rangeSize - 1, latestBlock);
-        const batch = await contract.queryFilter(filter, from, to);
+        const batch = await queryFilterWithRetry(contract, filter, from, to);
         logs.push(...batch);
       }
 
@@ -84,11 +119,19 @@ export default function CertificatesPage() {
 
       const filtered = results.filter((item): item is IssuedCertificate => Boolean(item));
       filtered.sort((a, b) => b.issuedAt - a.issuedAt);
-      setItems(filtered);
-      setState("loaded");
+      if (loadRunIdRef.current === runId) {
+        setItems(filtered);
+        setState("loaded");
+      }
     } catch (e: any) {
-      setError(e?.message || "Failed to load certificates.");
-      setState("error");
+      if (loadRunIdRef.current === runId) {
+        setError(e?.message || "Failed to load certificates.");
+        setState("error");
+      }
+    } finally {
+      if (loadRunIdRef.current === runId) {
+        loadingRef.current = false;
+      }
     }
   };
 
