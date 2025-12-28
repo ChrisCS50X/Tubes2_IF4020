@@ -10,6 +10,46 @@ Ijazah diterbitkan oleh **Admin Institusi** dalam bentuk dokumen digital (PDF, g
 
 Sistem mendukung dua transaksi utama, yaitu **Issue Certificate** dan **Revoke Certificate**. Publik dapat melakukan verifikasi keaslian ijazah melalui website dengan memanfaatkan transparansi dan sifat immutable dari ledger. Autentikasi Admin Institusi dilakukan menggunakan mekanisme kriptografi berbasis **signature nonce challenge**.
 
+
+## Screenshots
+
+- **Home / Landing Page**
+
+<div align="center">
+	<img src="docs/Home.png" alt="Home / Landing Page" width="400" />
+</div>
+
+- **Issue Certificate**
+
+<div align="center">
+	<img src="docs/Issue-Certificate.png" alt="Issue Certificate" width="400" />
+</div>
+
+- **Issued Certificates**
+
+<div align="center">
+	<img src="docs/Issued-Certificates.png" alt="Issued Certificates" width="400" />
+</div>
+
+- **Verify Certificate**
+
+<div align="center">
+	<img src="docs/Verify-Certificate.png" alt="Verify Certificate" width="400" />
+</div>
+
+- **Revoke Certificate**
+
+<div align="center">
+	<img src="docs/Revoke-Certificate.png" alt="Revoke Certificate" width="400" />
+</div>
+
+- **Issuer Updates**
+
+<div align="center">
+	<img src="docs/Issuer-Updates.png" alt="Issuer Updates" width="400" />
+</div>
+
+
 ## Daftar Fungsi
 
 ### 1) Autentikasi Admin (Institusi)
@@ -83,9 +123,10 @@ ETHERSCAN_API_KEY=    # untuk verify kontrak
 Tambahkan variabel berikut ke file `web/.env`:
 
 ```env
-NEXT_PUBLIC_CONTRACT_ADDRESS=0x5115bBA0c7bc89f862C867DFE2bdF3C664e606fE
+NEXT_PUBLIC_CONTRACT_ADDRESS=0x208EA644b3cf0817f1a81996b8Ae5E235F386591
+NEXT_PUBLIC_DEPLOY_TX_HASH=0x1218bceda35fe3079031a9ca42289aa4bc8b846a3cf8ba4c699ebe5b15bdf0b4
 NEXT_PUBLIC_CHAIN_ID=11155111
-NEXT_PUBLIC_ALCHEMY_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/your_key   # shareable RPC URL
+NEXT_PUBLIC_ALCHEMY_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/EE-q9pXO02LXVEySEaHLq   # shareable RPC URL
 
 PINATA_JWT=  
 PINATA_API_KEY=  
