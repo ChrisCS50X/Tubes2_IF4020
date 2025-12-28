@@ -297,7 +297,7 @@ function VerifyCertificatePageInner() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8">
+    <main className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 pb-16">
       <div className="mx-auto max-w-5xl">
         <div className="mb-8 text-center">
           <h1 className="mb-2 text-4xl font-bold text-white">Verify Ijazah</h1>
@@ -532,32 +532,6 @@ function VerifyCertificatePageInner() {
               </div>
             )}
           </div>
-        </div>
-
-        <div className="mt-8 rounded-2xl border border-slate-700 bg-slate-900/40 p-6 backdrop-blur">
-          <h3 className="mb-4 text-lg font-semibold text-white">How it works</h3>
-          <ol className="space-y-2 text-sm text-slate-400">
-            <li className="flex gap-3">
-              <span className="flex-shrink-0 font-bold text-emerald-400">1.</span>
-              <span>Download encrypted payload from off-chain storage</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex-shrink-0 font-bold text-emerald-400">2.</span>
-              <span>Decrypt PDF with AES key from the unlisted URL</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex-shrink-0 font-bold text-emerald-400">3.</span>
-              <span>Hash the decrypted PDF with SHA-256</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex-shrink-0 font-bold text-emerald-400">4.</span>
-              <span>Fetch metadata from blockchain using the transaction hash</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex-shrink-0 font-bold text-emerald-400">5.</span>
-              <span>Compare hashes and download the verified PDF</span>
-            </li>
-          </ol>
         </div>
       </div>
     </main>
