@@ -62,3 +62,38 @@ Sistem mendukung dua transaksi utama, yaitu **Issue Certificate** dan **Revoke C
 - **revokeCertificate(...)**  
 	Fungsi smart contract untuk mencabut ijazah.  
 	(contracts/contracts/CertificateRegistry.sol)
+
+## Cara Menjalankan Program
+
+### 1. Menjalankan Web/Frontend
+
+Masuk ke folder web:
+
+```bash
+cd web
+```
+
+Install dependencies:
+
+```bash
+npm install
+npm i --save-dev @types/qrcode
+```
+
+Jalankan aplikasi:
+
+```bash
+npm run dev
+```
+
+Aplikasi akan berjalan di http://localhost:6173.
+
+### 2. Smart Contracts
+
+- Folder `contracts` berisi kode smart contract dan script deployment.
+- Anda **tidak perlu menjalankan ulang** bagian ini kecuali ada perubahan pada smart contract.
+- Jika Anda melakukan perubahan pada smart contract, lakukan deploy ulang dengan perintah berikut (dari dalam folder `contracts`):
+
+```bash
+npx hardhat run scripts/deploy.ts --network sepolia
+```
