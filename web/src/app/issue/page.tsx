@@ -622,36 +622,7 @@ export default function IssueCertificatePage() {
           </div>
         </div>
 
-        {/* Info Section */}
-        <div className="mt-8 rounded-2xl border border-slate-700 bg-slate-900/40 p-6 backdrop-blur">
-          <h3 className="mb-4 text-lg font-semibold text-white">ℹ️ How it works</h3>
-          <ol className="space-y-2 text-sm text-slate-400">
-            <li className="flex gap-3">
-              <span className="flex-shrink-0 font-bold text-emerald-400">1.</span>
-              <span>Generate a certificate or upload your own PDF/Image/Text file</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex-shrink-0 font-bold text-emerald-400">2.</span>
-              <span>Hash the unsigned document using SHA-256</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex-shrink-0 font-bold text-emerald-400">3.</span>
-              <span>Encrypt the document with AES-256-GCM</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex-shrink-0 font-bold text-emerald-400">4.</span>
-              <span>Upload encrypted payload to IPFS via Pinata</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex-shrink-0 font-bold text-emerald-400">5.</span>
-              <span>Sign certificate metadata using wallet (EIP-712)</span>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex-shrink-0 font-bold text-emerald-400">6.</span>
-              <span>Submit transaction to blockchain (Ethereum Sepolia)</span>
-            </li>
-          </ol>
-        </div>
+        {/* Info Section dihapus sesuai permintaan */}
       </div>
     </main>
   );
