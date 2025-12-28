@@ -16,37 +16,37 @@ Sistem mendukung dua transaksi utama, yaitu **Issue Certificate** dan **Revoke C
 - **Home / Landing Page**
 
 <div align="center">
-	<img src="docs/Home.png" alt="Home / Landing Page" width="400" />
+	<img src="docs/Home.webp" alt="Home / Landing Page" width="400" />
 </div>
 
 - **Issue Certificate**
 
 <div align="center">
-	<img src="docs/Issue-Certificate.png" alt="Issue Certificate" width="400" />
+	<img src="docs/Issue-Certificate.webp" alt="Issue Certificate" width="400" />
 </div>
 
 - **Issued Certificates**
 
 <div align="center">
-	<img src="docs/Issued-Certificates.png" alt="Issued Certificates" width="400" />
+	<img src="docs/Issued-Certificates.webp" alt="Issued Certificates" width="400" />
 </div>
 
 - **Verify Certificate**
 
 <div align="center">
-	<img src="docs/Verify-Certificate.png" alt="Verify Certificate" width="400" />
+	<img src="docs/Verify-Certificate.webp" alt="Verify Certificate" width="400" />
 </div>
 
 - **Revoke Certificate**
 
 <div align="center">
-	<img src="docs/Revoke-Certificate.png" alt="Revoke Certificate" width="400" />
+	<img src="docs/Revoke-Certificate.webp" alt="Revoke Certificate" width="400" />
 </div>
 
 - **Issuer Updates**
 
 <div align="center">
-	<img src="docs/Issuer-Updates.png" alt="Issuer Updates" width="400" />
+	<img src="docs/Issuer-Updates.webp" alt="Issuer Updates" width="400" />
 </div>
 
 
