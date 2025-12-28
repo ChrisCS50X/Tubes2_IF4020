@@ -44,6 +44,31 @@ type EncryptedEnvelope = EncryptedPayload & {
   fileName?: string;
 };
 
+function serializeReceipt(receipt: TransactionReceipt): any {
+  return {
+    blockHash: receipt.blockHash,
+    blockNumber: receipt.blockNumber,
+    contractAddress: receipt.contractAddress,
+    from: receipt.from,
+    to: receipt.to,
+    logs: receipt.logs.map(log => ({
+      address: log.address,
+      topics: [...log.topics],
+      data: log.data,
+      index: log.index,
+      blockHash: log.blockHash,
+      blockNumber: log.blockNumber,
+      transactionHash: log.transactionHash,
+      transactionIndex: log.transactionIndex
+    })),
+    transactionHash: receipt.hash,
+    transactionIndex: receipt.index,
+    gasUsed: receipt.gasUsed.toString(),
+    cumulativeGasUsed: receipt.cumulativeGasUsed.toString(),
+    status: receipt.status
+  };
+}
+
 function VerifyCertificatePageInner() {
   const searchParams = useSearchParams();
   const [form, setForm] = useState<VerifyForm>({ file: "", key: "", tx: "" });
@@ -131,10 +156,14 @@ function VerifyCertificatePageInner() {
 
       const provider = getProvider();
       const contract = getCertificateRegistry(provider);
-      const receipt = await provider.getTransactionReceipt(form.tx.trim());
-      if (!receipt) {
+      // Get receipt dan serialize immediately
+      const rawReceipt = await provider.getTransactionReceipt(form.tx.trim());
+      if (!rawReceipt) {
         throw new Error("Transaction not found on chain.");
       }
+      
+      // Serialize receipt to plain object (removes Set objects)
+      const receipt = serializeReceipt(rawReceipt);
 
       const issueEvent = extractIssuedEvent(receipt, contract.interface);
       if (!issueEvent) {
@@ -142,11 +171,24 @@ function VerifyCertificatePageInner() {
       }
 
       const certificateId = issueEvent.args.certificateId as string;
-      const cert = await contract.getCertificate(certificateId);
-      const statusNum = Number(cert.status);
-      const statusLabel = statusNum === 1 ? "Active" : statusNum === 2 ? "Revoked" : "Unknown";
+      // FIX: Get certificate dan extract values immediately
+      const certRaw = await contract.getCertificate(certificateId);
+      
+      // Serialize certificate data to plain values
+      const cert = {
+        issuer: certRaw.issuer as string,
+        docHash: certRaw.docHash as string,
+        storageURI: certRaw.storageURI as string,
+        issuedAt: Number(certRaw.issuedAt),
+        status: Number(certRaw.status),
+        revokeReason: certRaw.revokeReason as string || "",
+        issuerSignature: certRaw.issuerSignature as string,
+        salt: certRaw.salt as string
+      };
 
-      if (statusNum !== 1) {
+      const statusLabel = cert.status === 1 ? "Active" : cert.status === 2 ? "Revoked" : "Unknown";
+
+      if (cert.status !== 1) {
         const reason = cert.revokeReason || "Certificate is not active.";
         throw new Error(`Certificate is ${statusLabel}. Reason: ${reason}`);
       }
@@ -160,8 +202,10 @@ function VerifyCertificatePageInner() {
       if (!issuerSignature || issuerSignature === "0x") {
         throw new Error("Issuer signature missing on-chain.");
       }
+      // FIX: Get network info dan extract chainId immediately
       const network = await provider.getNetwork();
       const chainId = Number(network.chainId);
+
       const issueTypedData = createIssueTypedData({
         certificateId,
         docHash: onChainHash,
@@ -222,7 +266,7 @@ function VerifyCertificatePageInner() {
         certificateId,
         issuer: cert.issuer as string,
         issuedAt: Number(cert.issuedAt),
-        status: statusNum,
+        status: cert.status,
         statusLabel,
         revokeReason: cert.revokeReason || "",
         storageURI: cert.storageURI as string,
