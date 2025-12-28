@@ -286,9 +286,7 @@ export default function IssuersPage() {
           <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 shadow-xl">
             <h2 className="mb-4 text-xl font-semibold text-white">Institution (Owner)</h2>
             <div className="space-y-4">
-              <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-4 text-xs text-slate-400">
-                Transactions are signed with the connected wallet (owner). No private key is stored or sent to the backend.
-              </div>
+
 
               <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-4">
                 <div className="mb-2 text-sm font-semibold text-slate-200">Set Approval Threshold</div>
@@ -379,9 +377,7 @@ export default function IssuersPage() {
           <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 shadow-xl">
             <h2 className="mb-4 text-xl font-semibold text-white">Issuer (Approver)</h2>
             <div className="space-y-4">
-              <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-4 text-xs text-slate-400">
-                Issuer approvals are signed with the connected wallet (issuer). No private key is stored or sent to the backend.
-              </div>
+
 
               <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-4">
                 <div className="mb-2 text-sm font-semibold text-slate-200">Approve Proposal</div>
