@@ -328,7 +328,7 @@ function VerifyCertificatePageInner() {
                   onChange={handleInputChange}
                   required
                   className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                  placeholder="ipfs://... or https://... or CID"
+                  placeholder="ipfs://... or CID"
                 />
               </div>
 
