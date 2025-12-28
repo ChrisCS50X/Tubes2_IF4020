@@ -127,3 +127,10 @@ Aplikasi akan berjalan di http://localhost:6173.
 npx hardhat run scripts/deploy.ts --network sepolia
 ```
 
+## Pembagian Kerja
+
+| Nama                        | NIM        | Tugas Spesifik                                                                                      |
+|-----------------------------|------------|-----------------------------------------------------------------------------------------------------|
+| Aland Mulia Pratama         | 13522124   | Implementasi fitur penerbitan ijazah (Issue Certificate):<br>- Form input data ijazah<br>- Enkripsi ijazah (AES)<br>- Upload ke IPFS/storage<br>- Hash dokumen (SHA-256) |
+| Christian Justin Hendrawan  | 13522135   | Implementasi fitur verifikasi ijazah:<br>- Halaman verifikasi publik<br>- Download & dekripsi ijazah<br>- Verifikasi hash & signature<br>- Tampilkan status keaslian ijazah<br>- Integrasi dengan blockchain explorer/ledger viewer<br>- Simpan metadata ke blockchain/ledger<br>- Tampilkan URL/QR code ijazah<br>- Tanda tangan digital (ECDSA) |
+| Axel Santadi Warih          | 13522155   | Implementasi fitur pencabutan ijazah (Revoke Certificate):<br>- Form revoke & alasan pencabutan<br>- Tanda tangan digital revoke<br>- Update status di blockchain/ledger<br>- Tampilkan status revoke di publik<br>Bonus: Transaksi pembaruan data (update public key issuer, multi-signature issuer) |
