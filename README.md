@@ -2,6 +2,8 @@
 
 > Maraknya ijazah palsu menuntut sistem pencatatan ijazah yang transparan. Blockchain dapat dimanfaatkan dengan ijazah digital yang ditandatangani rektor menggunakan kriptografi kunci publik dan fungsi hash.
 
+[![YouTube Demo](https://img.youtube.com/vi/_C6aaC2YMOY/0.jpg)](https://youtu.be/_C6aaC2YMOY)
+
 ## 🖥️ Deskripsi Proyek
 
 Proyek ini merupakan implementasi **Sistem Pencatatan Ijazah Digital** berbasis **blockchain** atau **centralized immutable ledger** untuk menjamin keaslian dan integritas ijazah digital. Sistem dirancang untuk mengatasi pemalsuan ijazah dengan menyediakan mekanisme penerbitan, penyimpanan, pencabutan, dan verifikasi ijazah yang transparan dan tidak dapat diubah.
