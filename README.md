@@ -120,8 +120,8 @@ Aplikasi akan berjalan di http://localhost:6173.
 ### 2. Smart Contracts
 
 - Folder `contracts` berisi kode smart contract dan script deployment.
-- Anda **tidak perlu menjalankan ulang** bagian ini kecuali ada perubahan pada smart contract.
-- Jika Anda melakukan perubahan pada smart contract, lakukan deploy ulang dengan perintah berikut (dari dalam folder `contracts`):
+- **tidak perlu menjalankan ulang** bagian ini kecuali ada perubahan pada smart contract.
+- Jika perubahan dilakukan pada smart contract, lakukan deploy ulang dengan perintah berikut (dari dalam folder `contracts`):
 
 ```bash
 npx hardhat run scripts/deploy.ts --network sepolia
