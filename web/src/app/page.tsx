@@ -88,7 +88,7 @@ export default function Home() {
       {/* Quick Actions */}
       <div className="mt-8">
         <h2 className="mb-4 text-xl font-semibold">Quick Actions</h2>
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
           <a
             href="/issue"
             className="group rounded-xl border border-slate-700 bg-slate-900/60 p-6 transition-all hover:border-emerald-500 hover:bg-slate-900"
@@ -124,6 +124,19 @@ export default function Home() {
             </h3>
             <p className="text-sm text-slate-400">
               Revoke invalid or withdrawn certificates
+            </p>
+          </a>
+
+          <a
+            href="/certificates"
+            className="group rounded-xl border border-slate-700 bg-slate-900/60  p-6 transition-all hover:border-emerald-500 hover:bg-slate-900"
+          >
+            <div className="mb-2 text-3xl">📂</div>
+            <h3 className="mb-2 text-lg font-semibold text-white group-hover:text-emerald-400">
+              Issued Certificates
+            </h3>
+            <p className="text-sm text-slate-400">
+              Browse issued certificates and their status
             </p>
           </a>
 

@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import detectEthereumProvider from "@metamask/detect-provider";
+import { ethers } from "ethers";
+import { getCertificateRegistry } from "@/lib/contract";
+import { CHAIN_ID, CONTRACT_ADDRESS } from "@/lib/env";
 
 type SessionState =
   | { status: "checking" }
@@ -34,9 +38,6 @@ export default function IssuersPage() {
   const [state, setState] = useState<IssuerStateResponse | null>(null);
   const [loadingState, setLoadingState] = useState(false);
   const [actionStatus, setActionStatus] = useState<string>("");
-
-  const [adminPrivateKey, setAdminPrivateKey] = useState("");
-  const [issuerPrivateKey, setIssuerPrivateKey] = useState("");
 
   const [newIssuer, setNewIssuer] = useState("");
   const [rotateOldIssuer, setRotateOldIssuer] = useState("");
@@ -88,64 +89,135 @@ export default function IssuersPage() {
     }
   }, [session.status]);
 
-  const postJson = async (url: string, body: any) => {
-    setActionStatus("");
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const json = await res.json();
-    if (!res.ok || !json.success) {
-      throw new Error(json.error || "Request failed");
+  const getWalletSigner = async () => {
+    if (!CONTRACT_ADDRESS) {
+      throw new Error("Missing contract address configuration.");
     }
-    return json;
+
+    const injectedProvider: any = await detectEthereumProvider();
+    if (!injectedProvider) {
+      throw new Error("MetaMask not found.");
+    }
+    await injectedProvider.request({ method: "eth_requestAccounts" });
+
+    const browserProvider = new ethers.BrowserProvider(injectedProvider);
+    const signer = await browserProvider.getSigner();
+    const signerAddress = await signer.getAddress();
+
+    if (session.status === "authenticated") {
+      const sessionAddr = session.walletAddress.toLowerCase();
+      if (signerAddress.toLowerCase() !== sessionAddr) {
+        throw new Error("Connected wallet does not match authenticated session.");
+      }
+    }
+
+    const network = await browserProvider.getNetwork();
+    const chainId = Number(network.chainId);
+    if (CHAIN_ID && chainId !== CHAIN_ID) {
+      throw new Error(`Wrong network. Please switch to chain ${CHAIN_ID}.`);
+    }
+
+    return signer;
   };
 
   const handleProposeAdd = async () => {
-    const json = await postJson("/api/issuers/add", {
-      newIssuer: newIssuer.trim(),
-      adminPrivateKey: adminPrivateKey.trim(),
-    });
-    setActionStatus(`Proposed add issuer. proposalId=${json.proposalId}, tx=${json.transactionHash}`);
-    await refreshState();
+    try {
+      setActionStatus("");
+      const trimmed = newIssuer.trim();
+      if (!ethers.isAddress(trimmed)) {
+        throw new Error("Invalid new issuer address.");
+      }
+
+      const signer = await getWalletSigner();
+      const contract = getCertificateRegistry(signer);
+
+      const issuers = await contract.getIssuers();
+      if (issuers.length === 0) {
+        const tx = await contract.addIssuer(trimmed);
+        const receipt = await tx.wait();
+        setActionStatus(`Added issuer directly. tx=${receipt.hash}`);
+      } else {
+        const proposalId = await contract.proposeAddIssuer.staticCall(trimmed);
+        const tx = await contract.proposeAddIssuer(trimmed);
+        const receipt = await tx.wait();
+        setActionStatus(`Proposed add issuer. proposalId=${proposalId.toString()}, tx=${receipt.hash}`);
+      }
+
+      await refreshState();
+    } catch (e: any) {
+      setActionStatus(e?.message || "Failed to propose add issuer");
+    }
   };
 
   const handleProposeRotate = async () => {
-    const json = await postJson("/api/issuers/rotate", {
-      issuer: rotateOldIssuer.trim(),
-      newIssuer: rotateNewIssuer.trim(),
-      adminPrivateKey: adminPrivateKey.trim(),
-    });
-    setActionStatus(`Proposed rotate issuer. proposalId=${json.proposalId}, tx=${json.transactionHash}`);
-    await refreshState();
+    try {
+      setActionStatus("");
+      const oldIssuer = rotateOldIssuer.trim();
+      const newIssuerAddress = rotateNewIssuer.trim();
+      if (!ethers.isAddress(oldIssuer) || !ethers.isAddress(newIssuerAddress)) {
+        throw new Error("Invalid issuer address.");
+      }
+      if (oldIssuer.toLowerCase() === newIssuerAddress.toLowerCase()) {
+        throw new Error("Old issuer and new issuer cannot be the same.");
+      }
+
+      const signer = await getWalletSigner();
+      const contract = getCertificateRegistry(signer);
+      const proposalId = await contract.proposeRotateIssuer.staticCall(oldIssuer, newIssuerAddress);
+      const tx = await contract.proposeRotateIssuer(oldIssuer, newIssuerAddress);
+      const receipt = await tx.wait();
+      setActionStatus(`Proposed rotate issuer. proposalId=${proposalId.toString()}, tx=${receipt.hash}`);
+      await refreshState();
+    } catch (e: any) {
+      setActionStatus(e?.message || "Failed to propose rotate issuer");
+    }
   };
 
   const handleApprove = async () => {
-    const json = await postJson("/api/issuers/approve", {
-      proposalId: proposalId.trim(),
-      issuerPrivateKey: issuerPrivateKey.trim(),
-    });
-    setActionStatus(`Approved proposal. tx=${json.transactionHash}`);
-    await refreshState();
+    try {
+      setActionStatus("");
+      const id = BigInt(proposalId.trim());
+      const signer = await getWalletSigner();
+      const contract = getCertificateRegistry(signer);
+      const tx = await contract.approveIssuerUpdate(id);
+      const receipt = await tx.wait();
+      setActionStatus(`Approved proposal. tx=${receipt.hash}`);
+      await refreshState();
+    } catch (e: any) {
+      setActionStatus(e?.message || "Failed to approve proposal");
+    }
   };
 
   const handleExecute = async () => {
-    const json = await postJson("/api/issuers/execute", {
-      proposalId: proposalId.trim(),
-      adminPrivateKey: adminPrivateKey.trim(),
-    });
-    setActionStatus(`Executed proposal. tx=${json.transactionHash}`);
-    await refreshState();
+    try {
+      setActionStatus("");
+      const id = BigInt(proposalId.trim());
+      const signer = await getWalletSigner();
+      const contract = getCertificateRegistry(signer);
+      const tx = await contract.executeIssuerUpdate(id);
+      const receipt = await tx.wait();
+      setActionStatus(`Executed proposal. tx=${receipt.hash}`);
+      await refreshState();
+    } catch (e: any) {
+      setActionStatus(e?.message || "Failed to execute proposal");
+    }
   };
 
   const handleSetThreshold = async () => {
-    const json = await postJson("/api/issuers/threshold", {
-      threshold,
-      adminPrivateKey: adminPrivateKey.trim(),
-    });
-    setActionStatus(`Threshold updated. tx=${json.transactionHash}`);
-    await refreshState();
+    try {
+      setActionStatus("");
+      if (!Number.isInteger(threshold) || threshold < 1) {
+        throw new Error("Threshold must be an integer >= 1.");
+      }
+      const signer = await getWalletSigner();
+      const contract = getCertificateRegistry(signer);
+      const tx = await contract.setIssuerUpdateThreshold(threshold);
+      const receipt = await tx.wait();
+      setActionStatus(`Threshold updated. tx=${receipt.hash}`);
+      await refreshState();
+    } catch (e: any) {
+      setActionStatus(e?.message || "Failed to update threshold");
+    }
   };
 
   if (session.status === "checking") {
@@ -214,15 +286,8 @@ export default function IssuersPage() {
           <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 shadow-xl">
             <h2 className="mb-4 text-xl font-semibold text-white">Institution (Owner)</h2>
             <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-300">Admin Private Key</label>
-                <input
-                  value={adminPrivateKey}
-                  onChange={(e) => setAdminPrivateKey(e.target.value)}
-                  className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white placeholder-slate-500"
-                  placeholder="0x..."
-                />
-                <p className="mt-1 text-xs text-amber-400">Demo only: private key is sent to backend.</p>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-4 text-xs text-slate-400">
+                Transactions are signed with the connected wallet (owner). No private key is stored or sent to the backend.
               </div>
 
               <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-4">
@@ -314,15 +379,8 @@ export default function IssuersPage() {
           <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 shadow-xl">
             <h2 className="mb-4 text-xl font-semibold text-white">Issuer (Approver)</h2>
             <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-300">Issuer Private Key</label>
-                <input
-                  value={issuerPrivateKey}
-                  onChange={(e) => setIssuerPrivateKey(e.target.value)}
-                  className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white placeholder-slate-500"
-                  placeholder="0x..."
-                />
-                <p className="mt-1 text-xs text-amber-400">Demo only: private key is sent to backend.</p>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-4 text-xs text-slate-400">
+                Issuer approvals are signed with the connected wallet (issuer). No private key is stored or sent to the backend.
               </div>
 
               <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-4">

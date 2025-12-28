@@ -24,12 +24,17 @@ contract CertificateRegistry is EIP712, Ownable, ReentrancyGuard {
         string revokeReason; // bounded in revoke
         uint64 revokedAt; // timestamp when revoked
         bytes issuerSignature; // EIP-712 signature from issuer
-        bytes16 salt; // 128-bit random salt (used to derive certificateId)
+        bytes16 salt; // 128-bit random salt (used to derive certificateId)     
+        bytes revokeSignature; // EIP-712 signature for revoke (issuer)
     }
 
     bytes32 private constant ISSUE_TYPEHASH =
         keccak256(
             "Issue(bytes32 certificateId,bytes32 docHash,string storageURI,address issuer,uint256 issuedAt,uint256 chainId,bytes16 salt)"
+        );
+    bytes32 private constant REVOKE_TYPEHASH =
+        keccak256(
+            "Revoke(bytes32 certificateId,string reason,address issuer,uint256 chainId)"
         );
 
     mapping(bytes32 => Certificate) private certificates;
@@ -286,7 +291,8 @@ contract CertificateRegistry is EIP712, Ownable, ReentrancyGuard {
             revokeReason: "",
             revokedAt: 0,
             issuerSignature: issuerSignature,
-            salt: salt
+            salt: salt,
+            revokeSignature: ""
         });
 
         issuedByDocAndIssuer[docIssuerKey] = true;
@@ -295,17 +301,26 @@ contract CertificateRegistry is EIP712, Ownable, ReentrancyGuard {
     }
 
     /// @notice Revoke an active certificate. Only owner or the original issuer can revoke.
-    function revokeCertificate(bytes32 certificateId, string calldata reason) external nonReentrant {
+    function revokeCertificate(
+        bytes32 certificateId,
+        string calldata reason,
+        bytes calldata issuerSignature
+    ) external nonReentrant {
         Certificate storage cert = certificates[certificateId];
         require(cert.status == Status.Active, "Not active");
         require(msg.sender == owner() || msg.sender == cert.issuer, "Not authorized");
         uint256 reasonLen = bytes(reason).length;
         require(reasonLen > 0, "Reason required");
         require(reasonLen <= 256, "Reason too long");
+        require(issuerSignature.length > 0, "Signature required");
+
+        address signer = _recoverRevokeSigner(certificateId, reason, cert.issuer, issuerSignature);
+        require(signer == cert.issuer, "Invalid revoke signature");
 
         cert.status = Status.Revoked;
         cert.revokeReason = reason;
         cert.revokedAt = uint64(block.timestamp);
+        cert.revokeSignature = issuerSignature;
 
         emit CertificateRevoked(certificateId, cert.issuer, reason, cert.revokedAt);
     }
@@ -339,6 +354,25 @@ contract CertificateRegistry is EIP712, Ownable, ReentrancyGuard {
                 uint256(issuedAt),
                 block.chainid,
                 salt
+            )
+        );
+        bytes32 digest = _hashTypedDataV4(structHash);
+        return ECDSA.recover(digest, issuerSignature);
+    }
+
+    function _recoverRevokeSigner(
+        bytes32 certificateId,
+        string calldata reason,
+        address issuer,
+        bytes calldata issuerSignature
+    ) internal view returns (address) {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                REVOKE_TYPEHASH,
+                certificateId,
+                keccak256(bytes(reason)),
+                issuer,
+                block.chainid
             )
         );
         bytes32 digest = _hashTypedDataV4(structHash);

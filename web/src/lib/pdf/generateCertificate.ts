@@ -16,9 +16,9 @@ export type CertificateData = {
 
 /**
  * Generate PDF certificate with elegant design
- * Returns the PDF as a Buffer
+ * Returns the PDF as an ArrayBuffer
  */
-export async function generateCertificatePDF(data: CertificateData): Promise<Buffer> {
+export async function generateCertificatePDF(data: CertificateData): Promise<ArrayBuffer> {
   const doc = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -170,9 +170,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Buf
   const timestamp = new Date().toISOString();
   doc.text(`Diterbitkan: ${timestamp}`, pageWidth / 2, pageHeight - 10, { align: "center" });
 
-  // Convert to Buffer
-  const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
-  return pdfBuffer;
+  return doc.output("arraybuffer");
 }
 
 /**

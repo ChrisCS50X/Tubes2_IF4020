@@ -11,6 +11,7 @@ import { decryptAesGcm, importAesKeyBase64, EncryptedPayload } from "@/lib/crypt
 import { sha256 } from "@/lib/crypto/hash";
 import { getCertificateRegistry, getProvider } from "@/lib/contract";
 import { CONTRACT_ADDRESS } from "@/lib/env";
+import { createIssueTypedData } from "@/lib/eip712";
 
 const IPFS_GATEWAY = "https://gateway.pinata.cloud/ipfs/";
 
@@ -38,6 +39,11 @@ type VerifyResult = {
   storageMatch: boolean;
 };
 
+type EncryptedEnvelope = EncryptedPayload & {
+  mimeType?: string;
+  fileName?: string;
+};
+
 function VerifyCertificatePageInner() {
   const searchParams = useSearchParams();
   const [form, setForm] = useState<VerifyForm>({ file: "", key: "", tx: "" });
@@ -45,6 +51,7 @@ function VerifyCertificatePageInner() {
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [downloadName, setDownloadName] = useState<string | null>(null);
   const [origin, setOrigin] = useState("");
   const [autoStart, setAutoStart] = useState(false);
 
@@ -103,6 +110,7 @@ function VerifyCertificatePageInner() {
       URL.revokeObjectURL(downloadUrl);
       setDownloadUrl(null);
     }
+    setDownloadName(null);
 
     try {
       if (!form.file || !form.key || !form.tx) {
@@ -113,11 +121,13 @@ function VerifyCertificatePageInner() {
       }
 
       const fileUrl = resolveFileUrl(form.file);
-      const encryptedPayload = await fetchEncryptedPayload(fileUrl);
+      const encryptedEnvelope = await fetchEncryptedPayload(fileUrl);
 
       const aesKey = await importAesKeyBase64(form.key.trim());
-      const decrypted = await decryptAesGcm(aesKey, encryptedPayload);
+      const decrypted = await decryptAesGcm(aesKey, encryptedEnvelope);
       const docHash = await sha256(decrypted);
+      const originalMimeType = encryptedEnvelope.mimeType || "application/pdf";
+      const originalFileName = encryptedEnvelope.fileName || "";
 
       const provider = getProvider();
       const contract = getCertificateRegistry(provider);
@@ -146,6 +156,31 @@ function VerifyCertificatePageInner() {
         throw new Error("Document hash mismatch. The certificate may be tampered.");
       }
 
+      const issuerSignature = (cert.issuerSignature as string) || "";
+      if (!issuerSignature || issuerSignature === "0x") {
+        throw new Error("Issuer signature missing on-chain.");
+      }
+      const network = await provider.getNetwork();
+      const chainId = Number(network.chainId);
+      const issueTypedData = createIssueTypedData({
+        certificateId,
+        docHash: onChainHash,
+        storageURI: cert.storageURI as string,
+        issuer: cert.issuer as string,
+        issuedAt: Number(cert.issuedAt),
+        chainId,
+        salt: cert.salt as string,
+      });
+      const recoveredIssuer = ethers.verifyTypedData(
+        issueTypedData.domain,
+        issueTypedData.types,
+        issueTypedData.message,
+        issuerSignature
+      );
+      if (recoveredIssuer.toLowerCase() !== (cert.issuer as string).toLowerCase()) {
+        throw new Error("Issuer signature verification failed.");
+      }
+
       const baseOrigin =
         origin || (typeof window !== "undefined" ? window.location.origin : "");
       const shareUrl = baseOrigin
@@ -170,17 +205,18 @@ function VerifyCertificatePageInner() {
         }
       }
 
-      const pdfWithUrl = await embedUrlInPdf(
+      const output = await buildVerifiedFile(
         decrypted,
+        originalMimeType,
+        originalFileName,
+        certificateId,
         shareUrl || "Verification URL unavailable",
         qrDataUrl || undefined,
         shareUrl || undefined
       );
-
-      const pdfBuffer = toArrayBuffer(pdfWithUrl);
-      const blob = new Blob([pdfBuffer], { type: "application/pdf" });
-      const objectUrl = URL.createObjectURL(blob);
+      const objectUrl = URL.createObjectURL(output.blob);
       setDownloadUrl(objectUrl);
+      setDownloadName(output.fileName);
 
       setResult({
         certificateId,
@@ -213,6 +249,7 @@ function VerifyCertificatePageInner() {
       URL.revokeObjectURL(downloadUrl);
       setDownloadUrl(null);
     }
+    setDownloadName(null);
   };
 
   return (
@@ -421,10 +458,10 @@ function VerifyCertificatePageInner() {
                 {downloadUrl && (
                   <a
                     href={downloadUrl}
-                    download={`certificate-${result.certificateId}.pdf`}
+                    download={downloadName || `certificate-${result.certificateId}.pdf`}
                     className="block w-full rounded-lg bg-emerald-600 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-emerald-500"
                   >
-                    Download Verified PDF
+                    Download Verified File
                   </a>
                 )}
 
@@ -522,7 +559,7 @@ function resolveFileUrl(raw: string): string {
   return `${IPFS_GATEWAY}${trimmed}`;
 }
 
-async function fetchEncryptedPayload(fileUrl: string): Promise<EncryptedPayload> {
+async function fetchEncryptedPayload(fileUrl: string): Promise<EncryptedEnvelope> {
   const response = await fetch(fileUrl);
   if (!response.ok) {
     throw new Error("Failed to download encrypted file.");
@@ -531,11 +568,11 @@ async function fetchEncryptedPayload(fileUrl: string): Promise<EncryptedPayload>
   if (!json || typeof json !== "object") {
     throw new Error("Encrypted payload is invalid.");
   }
-  const { iv, tag, data } = json as Partial<EncryptedPayload>;
+  const { iv, tag, data, mimeType, fileName } = json as Partial<EncryptedEnvelope>;
   if (!iv || !tag || !data) {
     throw new Error("Encrypted payload is missing fields.");
   }
-  return { iv, tag, data } as EncryptedPayload;
+  return { iv, tag, data, mimeType, fileName } as EncryptedEnvelope;
 }
 
 function extractIssuedEvent(receipt: TransactionReceipt, iface: Interface): LogDescription | null {
@@ -588,6 +625,37 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   return copy.buffer;
+}
+
+async function buildVerifiedFile(
+  fileBytes: ArrayBuffer,
+  mimeType: string,
+  originalFileName: string,
+  certificateId: string,
+  url: string,
+  qrDataUrl?: string,
+  linkUrl?: string
+): Promise<{ blob: Blob; fileName: string }> {
+  const resolvedMime = resolveMimeType(mimeType, originalFileName);
+  const fileName = buildFileName(originalFileName, certificateId, resolvedMime);
+
+  if (resolvedMime === "application/pdf") {
+    const pdfWithUrl = await embedUrlInPdf(fileBytes, url, qrDataUrl, linkUrl);
+    const pdfBuffer = toArrayBuffer(pdfWithUrl);
+    return { blob: new Blob([pdfBuffer], { type: "application/pdf" }), fileName };
+  }
+
+  if (resolvedMime.startsWith("text/")) {
+    const textWithUrl = embedUrlInText(fileBytes, url);
+    return { blob: new Blob([textWithUrl], { type: "text/plain" }), fileName };
+  }
+
+  if (resolvedMime.startsWith("image/")) {
+    const blob = await embedUrlInImage(fileBytes, resolvedMime, url, qrDataUrl);
+    return { blob, fileName };
+  }
+
+  throw new Error("Unsupported file type for verification.");
 }
 
 async function embedUrlInPdf(
@@ -655,6 +723,173 @@ async function embedUrlInPdf(
   }
 
   return pdfDoc.save();
+}
+
+function embedUrlInText(fileBytes: ArrayBuffer, url: string): string {
+  const text = new TextDecoder().decode(new Uint8Array(fileBytes));
+  return `${text}\n\nURL Ijazah: ${url}\n`;
+}
+
+async function embedUrlInImage(
+  fileBytes: ArrayBuffer,
+  mimeType: string,
+  urlText: string,
+  qrDataUrl?: string
+): Promise<Blob> {
+  const inputBlob = new Blob([fileBytes], { type: mimeType });
+  const objectUrl = URL.createObjectURL(inputBlob);
+
+  try {
+    const image = await loadImage(objectUrl);
+    const canvas = document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Canvas not supported.");
+    }
+
+    ctx.drawImage(image, 0, 0);
+
+    const padding = Math.max(12, Math.floor(image.width * 0.02));
+    const fontSize = Math.max(12, Math.floor(image.width * 0.03));
+    ctx.font = `${fontSize}px sans-serif`;
+
+    const maxWidth = image.width - padding * 2;
+    const lines = wrapCanvasText(ctx, `URL Ijazah: ${urlText}`, maxWidth);
+    const lineHeight = fontSize + 4;
+    const blockHeight = lines.length * lineHeight + padding;
+    const rectY = Math.max(0, image.height - blockHeight - padding);
+
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, rectY, image.width, blockHeight + padding);
+
+    ctx.fillStyle = "#ffffff";
+    lines.forEach((line, index) => {
+      ctx.fillText(line, padding, rectY + padding + lineHeight * (index + 0.8));
+    });
+
+    if (qrDataUrl) {
+      try {
+        const qrImage = await loadImage(qrDataUrl);
+        const qrSize = Math.min(140, Math.floor(image.width * 0.2));
+        const qrX = image.width - qrSize - padding;
+        const qrY = Math.max(padding, rectY - qrSize - padding);
+        ctx.fillStyle = "rgba(255,255,255,0.85)";
+        ctx.fillRect(qrX - 4, qrY - 4, qrSize + 8, qrSize + 8);
+        ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+      } catch {
+        // Ignore QR failures for image output
+      }
+    }
+
+    return await new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("Failed to export image."));
+            return;
+          }
+          resolve(blob);
+        },
+        mimeType === "image/jpeg" ? "image/jpeg" : "image/png"
+      );
+    });
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Failed to load image."));
+    img.src = src;
+  });
+}
+
+function wrapCanvasText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number
+): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const testLine = current ? `${current} ${word}` : word;
+    if (ctx.measureText(testLine).width <= maxWidth) {
+      current = testLine;
+      continue;
+    }
+
+    if (current) {
+      lines.push(current);
+      current = "";
+    }
+
+    if (ctx.measureText(word).width <= maxWidth) {
+      current = word;
+      continue;
+    }
+
+    let segment = "";
+    for (const char of word) {
+      const testSegment = segment + char;
+      if (ctx.measureText(testSegment).width > maxWidth && segment) {
+        lines.push(segment);
+        segment = char;
+      } else {
+        segment = testSegment;
+      }
+    }
+    current = segment;
+  }
+
+  if (current) lines.push(current);
+  return lines;
+}
+
+function normalizeMimeType(mimeType: string): string {
+  const normalized = (mimeType || "").split(";")[0]?.trim();
+  return normalized || "application/pdf";
+}
+
+function resolveMimeType(mimeType: string, fileName: string): string {
+  const normalized = normalizeMimeType(mimeType);
+  if (normalized !== "application/octet-stream") return normalized;
+  const ext = fileName?.split(".").pop()?.toLowerCase() || "";
+  if (ext === "pdf") return "application/pdf";
+  if (ext === "txt") return "text/plain";
+  if (ext === "png") return "image/png";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  return normalized;
+}
+
+function buildFileName(
+  originalFileName: string,
+  certificateId: string,
+  mimeType: string
+): string {
+  const trimmed = originalFileName?.trim();
+  const ext = extensionFromMime(mimeType);
+  if (trimmed) {
+    if (trimmed.includes(".") || !ext) return trimmed;
+    return `${trimmed}.${ext}`;
+  }
+  if (!ext) return `certificate-${certificateId}`;
+  return `certificate-${certificateId}.${ext}`;
+}
+
+function extensionFromMime(mimeType: string): string {
+  if (mimeType === "application/pdf") return "pdf";
+  if (mimeType === "text/plain") return "txt";
+  if (mimeType.startsWith("text/")) return "txt";
+  if (mimeType === "image/png") return "png";
+  if (mimeType === "image/jpeg") return "jpg";
+  return "";
 }
 
 function wrapText(text: string, font: PDFFont, fontSize: number, maxWidth: number): string[] {

@@ -14,6 +14,14 @@ const ISSUE_TYPES = {
     { name: "salt", type: "bytes16" },
   ],
 };
+const REVOKE_TYPES = {
+  Revoke: [
+    { name: "certificateId", type: "bytes32" },
+    { name: "reason", type: "string" },
+    { name: "issuer", type: "address" },
+    { name: "chainId", type: "uint256" },
+  ],
+};
 
 async function deriveCertificateId(
   docHash: string,
@@ -38,6 +46,20 @@ async function signIssue(
     verifyingContract: registry.target as string,
   };
   return signer.signTypedData(domain, ISSUE_TYPES, message);
+}
+
+async function signRevoke(
+  registry: CertificateRegistry,
+  signer: any,
+  message: any
+): Promise<string> {
+  const domain = {
+    name: "CertificateRegistry",
+    version: "1",
+    chainId: message.chainId,
+    verifyingContract: registry.target as string,
+  };
+  return signer.signTypedData(domain, REVOKE_TYPES, message);
 }
 
 describe("CertificateRegistry", () => {
@@ -161,7 +183,15 @@ describe("CertificateRegistry", () => {
     await registry.issueCertificate(certificateId, docHash, storageURI, issuer.address, issuedAt, salt, signature);
 
     const reason = "Expired";
-    await expect(registry.connect(issuer).revokeCertificate(certificateId, reason))
+    const revokeSignature = await signRevoke(registry, issuer, {
+      certificateId,
+      reason,
+      issuer: issuer.address,
+      chainId,
+    });
+    await expect(
+      registry.connect(issuer).revokeCertificate(certificateId, reason, revokeSignature)
+    )
       .to.emit(registry, "CertificateRevoked")
       .withArgs(certificateId, issuer.address, reason, anyValue);
 
@@ -187,7 +217,16 @@ describe("CertificateRegistry", () => {
     });
     await registry.issueCertificate(certificateId, docHash, storageURI, issuer.address, issuedAt, salt, signature);
 
-    await expect(registry.connect(other).revokeCertificate(certificateId, "nope")).to.be.revertedWith("Not authorized");
+    const reason = "nope";
+    const revokeSignature = await signRevoke(registry, issuer, {
+      certificateId,
+      reason,
+      issuer: issuer.address,
+      chainId,
+    });
+    await expect(
+      registry.connect(other).revokeCertificate(certificateId, reason, revokeSignature)
+    ).to.be.revertedWith("Not authorized");
   });
 
   it("tracks issuer list on add/remove", async () => {

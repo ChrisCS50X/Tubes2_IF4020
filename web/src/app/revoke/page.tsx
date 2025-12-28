@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import detectEthereumProvider from "@metamask/detect-provider";
+import { ethers } from "ethers";
+import { createRevokeTypedData, signTypedData } from "@/lib/eip712";
+import { getCertificateRegistry } from "@/lib/contract";
+import { CHAIN_ID, CONTRACT_ADDRESS } from "@/lib/env";
 
 type FormState = {
   status: "idle" | "revoking" | "success" | "error";
@@ -11,7 +16,6 @@ type FormState = {
 export default function RevokeCertificatePage() {
   const [certificateId, setCertificateId] = useState("");
   const [reason, setReason] = useState("");
-  const [issuerPrivateKey, setIssuerPrivateKey] = useState("");
   const [formState, setFormState] = useState<FormState>({ status: "idle" });
   const [sessionStatus, setSessionStatus] = useState<
     "checking" | "authenticated" | "unauthenticated"
@@ -50,31 +54,51 @@ export default function RevokeCertificatePage() {
       alert("Revoke reason is required!");
       return;
     }
-    if (!issuerPrivateKey.trim()) {
-      alert("Private key is required!");
-      return;
-    }
 
     try {
       setFormState({ status: "revoking" });
-      const response = await fetch("/api/certificates/revoke", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          certificateId: certificateId.trim(),
-          reason: reason.trim(),
-          issuerPrivateKey: issuerPrivateKey.trim(),
-        }),
-      });
-
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Failed to revoke certificate");
+      if (!CONTRACT_ADDRESS) {
+        throw new Error("Missing contract address configuration.");
       }
+
+      const injectedProvider: any = await detectEthereumProvider();
+      if (!injectedProvider) {
+        throw new Error("MetaMask not found.");
+      }
+      await injectedProvider.request({ method: "eth_requestAccounts" });
+
+      const browserProvider = new ethers.BrowserProvider(injectedProvider);
+      const signer = await browserProvider.getSigner();
+      const signerAddress = await signer.getAddress();
+      if (sessionAddress && signerAddress.toLowerCase() !== sessionAddress.toLowerCase()) {
+        throw new Error("Connected wallet does not match authenticated session.");
+      }
+
+      const network = await browserProvider.getNetwork();
+      const chainId = Number(network.chainId);
+      if (CHAIN_ID && chainId !== CHAIN_ID) {
+        throw new Error(`Wrong network. Please switch to chain ${CHAIN_ID}.`);
+      }
+
+      const typedData = createRevokeTypedData({
+        certificateId: certificateId.trim(),
+        reason: reason.trim(),
+        issuer: signerAddress,
+        chainId,
+      });
+      const signature = await signTypedData(signer, typedData);
+
+      const contract = getCertificateRegistry(signer);
+      const tx = await contract.revokeCertificate(
+        certificateId.trim(),
+        reason.trim(),
+        signature
+      );
+      const receipt = await tx.wait();
 
       setFormState({
         status: "success",
-        transactionHash: result.transactionHash,
+        transactionHash: receipt.hash,
       });
     } catch (error: any) {
       setFormState({
@@ -87,7 +111,6 @@ export default function RevokeCertificatePage() {
   const resetForm = () => {
     setCertificateId("");
     setReason("");
-    setIssuerPrivateKey("");
     setFormState({ status: "idle" });
   };
 
@@ -173,23 +196,6 @@ export default function RevokeCertificatePage() {
                   className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   placeholder="e.g., Issued in error"
                 />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-300">
-                  Issuer Private Key * (For Demo Only)
-                </label>
-                <input
-                  type="password"
-                  value={issuerPrivateKey}
-                  onChange={(e) => setIssuerPrivateKey(e.target.value)}
-                  required
-                  className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                  placeholder="0x..."
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  In production, use secure key management (HSM, KMS).
-                </p>
               </div>
 
               <button

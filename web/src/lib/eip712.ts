@@ -11,6 +11,13 @@ export type IssueTypedData = {
   salt: string;
 };
 
+export type RevokeTypedData = {
+  certificateId: string;
+  reason: string;
+  issuer: string;
+  chainId: number;
+};
+
 /**
  * Create EIP-712 typed data for issuing a certificate
  */
@@ -42,6 +49,35 @@ export function createIssueTypedData(data: IssueTypedData) {
       issuedAt: data.issuedAt,
       chainId: data.chainId,
       salt: data.salt,
+    },
+  };
+}
+
+/**
+ * Create EIP-712 typed data for revoking a certificate
+ */
+export function createRevokeTypedData(data: RevokeTypedData) {
+  return {
+    domain: {
+      name: "CertificateRegistry",
+      version: "1",
+      chainId: data.chainId,
+      verifyingContract: CONTRACT_ADDRESS,
+    },
+    types: {
+      Revoke: [
+        { name: "certificateId", type: "bytes32" },
+        { name: "reason", type: "string" },
+        { name: "issuer", type: "address" },
+        { name: "chainId", type: "uint256" },
+      ],
+    },
+    primaryType: "Revoke" as const,
+    message: {
+      certificateId: data.certificateId,
+      reason: data.reason,
+      issuer: data.issuer,
+      chainId: data.chainId,
     },
   };
 }

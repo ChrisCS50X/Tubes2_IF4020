@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CertificateData } from "@/lib/pdf/generateCertificate";
+import detectEthereumProvider from "@metamask/detect-provider";
+import { ethers } from "ethers";
+import { CertificateData, generateCertificatePDF } from "@/lib/pdf/generateCertificate";
+import { sha256 } from "@/lib/crypto/hash";
+import { encryptAesGcm, exportAesKeyBase64, generateAesKey } from "@/lib/crypto/aes";
+import { createIssueTypedData, generateCertificateId, generateSalt, signTypedData } from "@/lib/eip712";
+import { getCertificateRegistry } from "@/lib/contract";
+import { CHAIN_ID, CONTRACT_ADDRESS } from "@/lib/env";
 
 type FormState = {
   status: "idle" | "generating" | "success" | "error";
@@ -26,8 +33,8 @@ export default function IssueCertificatePage() {
     deanName: "Dr. Dekan STEI",
   });
 
-  const [issuerPrivateKey, setIssuerPrivateKey] = useState("");
   const [formState, setFormState] = useState<FormState>({ status: "idle" });
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [sessionStatus, setSessionStatus] = useState<
     "checking" | "authenticated" | "unauthenticated"
   >("checking");
@@ -80,38 +87,115 @@ export default function IssueCertificatePage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setUploadedFile(file);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!issuerPrivateKey.trim()) {
-      alert("Private key is required!");
-      return;
-    }
 
     try {
       setFormState({ status: "generating" });
 
-      const response = await fetch("/api/certificates/issue", {
+      if (!CONTRACT_ADDRESS) {
+        throw new Error("Missing contract address configuration.");
+      }
+
+      const injectedProvider: any = await detectEthereumProvider();
+      if (!injectedProvider) {
+        throw new Error("MetaMask not found.");
+      }
+      await injectedProvider.request({ method: "eth_requestAccounts" });
+
+      const browserProvider = new ethers.BrowserProvider(injectedProvider);
+      const signer = await browserProvider.getSigner();
+      const signerAddress = await signer.getAddress();
+      if (sessionAddress && signerAddress.toLowerCase() !== sessionAddress.toLowerCase()) {
+        throw new Error("Connected wallet does not match authenticated session.");
+      }
+
+      const network = await browserProvider.getNetwork();
+      const chainId = Number(network.chainId);
+      if (CHAIN_ID && chainId !== CHAIN_ID) {
+        throw new Error(`Wrong network. Please switch to chain ${CHAIN_ID}.`);
+      }
+
+      let fileBytes: ArrayBuffer;
+      let mimeType = "application/pdf";
+      let fileName = "";
+
+      if (uploadedFile) {
+        fileBytes = await uploadedFile.arrayBuffer();
+        mimeType = uploadedFile.type || "application/octet-stream";
+        fileName = uploadedFile.name || `certificate-${Date.now()}`;
+      } else {
+        fileBytes = await generateCertificatePDF(formData);
+        mimeType = "application/pdf";
+        fileName = `certificate-${Date.now()}.pdf`;
+      }
+
+      const docHash = await sha256(fileBytes);
+      const aesKey = await generateAesKey();
+      const encryptedPayload = await encryptAesGcm(aesKey, fileBytes);
+      const encryptionKey = await exportAesKeyBase64(aesKey);
+
+      const pinResponse = await fetch("/api/certificates/issue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          certificateData: formData,
-          issuerPrivateKey: issuerPrivateKey.trim(),
+          encryptedPayload: {
+            ...encryptedPayload,
+            mimeType,
+            fileName,
+          },
         }),
       });
 
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || "Failed to issue certificate");
+      const pinResult = await pinResponse.json();
+      if (!pinResponse.ok || !pinResult.success) {
+        throw new Error(pinResult.error || "Failed to upload encrypted certificate.");
       }
+
+      const storageURI = pinResult.storageURI as string;
+      const ipfsCid = pinResult.ipfsCid as string;
+      if (!storageURI || !ipfsCid) {
+        throw new Error("Invalid IPFS response.");
+      }
+
+      const salt = generateSalt();
+      const issuedAt = Math.floor(Date.now() / 1000);
+      const certificateId = generateCertificateId(docHash, salt, signerAddress, chainId, issuedAt);
+
+      const typedData = createIssueTypedData({
+        certificateId,
+        docHash,
+        storageURI,
+        issuer: signerAddress,
+        issuedAt,
+        chainId,
+        salt,
+      });
+      const signature = await signTypedData(signer, typedData);
+
+      const contract = getCertificateRegistry(signer);
+      const tx = await contract.issueCertificate(
+        certificateId,
+        docHash,
+        storageURI,
+        signerAddress,
+        issuedAt,
+        salt,
+        signature
+      );
+      const receipt = await tx.wait();
 
       setFormState({
         status: "success",
-        certificateId: result.certificateId,
-        transactionHash: result.transactionHash,
-        ipfsCid: result.ipfsCid,
-        encryptionKey: result.encryptionKey,
+        certificateId,
+        transactionHash: receipt.hash,
+        ipfsCid,
+        encryptionKey,
       });
     } catch (error: any) {
       setFormState({
@@ -123,6 +207,7 @@ export default function IssueCertificatePage() {
 
   const resetForm = () => {
     setFormState({ status: "idle" });
+    setUploadedFile(null);
     setFormData({
       studentName: "",
       nim: "",
@@ -135,7 +220,6 @@ export default function IssueCertificatePage() {
       rectorName: "Prof. Dr. Rektor ITB",
       deanName: "Dr. Dekan STEI",
     });
-    setIssuerPrivateKey("");
   };
 
   if (sessionStatus === "checking") {
@@ -197,8 +281,24 @@ export default function IssueCertificatePage() {
           {/* Form Section */}
           <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 shadow-xl backdrop-blur">
             <h2 className="mb-6 text-xl font-semibold text-white">Certificate Information</h2>
-            
+
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Optional File Upload */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-300">
+                  Upload Certificate File (PDF/Image/Text)
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.txt"
+                  onChange={handleFileChange}
+                  className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white file:mr-3 file:rounded-md file:border-0 file:bg-slate-700 file:px-3 file:py-1 file:text-sm file:text-slate-200"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  If a file is uploaded, the form below becomes optional.
+                </p>
+              </div>
+
               {/* Student Name */}
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-300">
@@ -209,7 +309,7 @@ export default function IssueCertificatePage() {
                   name="studentName"
                   value={formData.studentName}
                   onChange={handleInputChange}
-                  required
+                  required={!uploadedFile}
                   className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   placeholder="e.g., Budi Santoso"
                 />
@@ -225,7 +325,7 @@ export default function IssueCertificatePage() {
                   name="nim"
                   value={formData.nim}
                   onChange={handleInputChange}
-                  required
+                  required={!uploadedFile}
                   className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   placeholder="e.g., 13520001"
                 />
@@ -241,7 +341,7 @@ export default function IssueCertificatePage() {
                   name="program"
                   value={formData.program}
                   onChange={handleInputChange}
-                  required
+                  required={!uploadedFile}
                   className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   placeholder="e.g., Teknik Informatika"
                 />
@@ -257,7 +357,7 @@ export default function IssueCertificatePage() {
                   name="faculty"
                   value={formData.faculty}
                   onChange={handleInputChange}
-                  required
+                  required={!uploadedFile}
                   className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   placeholder="e.g., Sekolah Teknik Elektro dan Informatika"
                 />
@@ -273,7 +373,7 @@ export default function IssueCertificatePage() {
                   name="degree"
                   value={formData.degree}
                   onChange={handleInputChange}
-                  required
+                  required={!uploadedFile}
                   className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   placeholder="e.g., Komputer"
                 />
@@ -289,7 +389,7 @@ export default function IssueCertificatePage() {
                   name="gpa"
                   value={formData.gpa}
                   onChange={handleInputChange}
-                  required
+                  required={!uploadedFile}
                   pattern="[0-9]+\.?[0-9]*"
                   className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   placeholder="e.g., 3.85"
@@ -306,27 +406,9 @@ export default function IssueCertificatePage() {
                   name="graduationDate"
                   value={formData.graduationDate}
                   onChange={handleInputChange}
-                  required
+                  required={!uploadedFile}
                   className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                 />
-              </div>
-
-              {/* Private Key (Hidden in Production) */}
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-300">
-                  Issuer Private Key * (For Demo Only)
-                </label>
-                <input
-                  type="password"
-                  value={issuerPrivateKey}
-                  onChange={(e) => setIssuerPrivateKey(e.target.value)}
-                  required
-                  className="w-full rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-white placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-                  placeholder="0x..."
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  ⚠️ In production, use secure key management (HSM, KMS)
-                </p>
               </div>
 
               {/* Submit Button */}
@@ -546,23 +628,23 @@ export default function IssueCertificatePage() {
           <ol className="space-y-2 text-sm text-slate-400">
             <li className="flex gap-3">
               <span className="flex-shrink-0 font-bold text-emerald-400">1.</span>
-              <span>Generate PDF certificate with the provided data</span>
+              <span>Generate a certificate or upload your own PDF/Image/Text file</span>
             </li>
             <li className="flex gap-3">
               <span className="flex-shrink-0 font-bold text-emerald-400">2.</span>
-              <span>Hash the PDF using SHA-256 (unsigned document hash)</span>
+              <span>Hash the unsigned document using SHA-256</span>
             </li>
             <li className="flex gap-3">
               <span className="flex-shrink-0 font-bold text-emerald-400">3.</span>
-              <span>Encrypt the PDF with AES-256-GCM</span>
+              <span>Encrypt the document with AES-256-GCM</span>
             </li>
             <li className="flex gap-3">
               <span className="flex-shrink-0 font-bold text-emerald-400">4.</span>
-              <span>Upload encrypted PDF to IPFS via Pinata</span>
+              <span>Upload encrypted payload to IPFS via Pinata</span>
             </li>
             <li className="flex gap-3">
               <span className="flex-shrink-0 font-bold text-emerald-400">5.</span>
-              <span>Sign certificate metadata using EIP-712</span>
+              <span>Sign certificate metadata using wallet (EIP-712)</span>
             </li>
             <li className="flex gap-3">
               <span className="flex-shrink-0 font-bold text-emerald-400">6.</span>
