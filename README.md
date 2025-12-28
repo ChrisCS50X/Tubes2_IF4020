@@ -2,7 +2,7 @@
 
 > Maraknya ijazah palsu menuntut sistem pencatatan ijazah yang transparan. Blockchain dapat dimanfaatkan dengan ijazah digital yang ditandatangani rektor menggunakan kriptografi kunci publik dan fungsi hash.
 
-## Deskripsi Proyek
+## 🖥️ Deskripsi Proyek
 
 Proyek ini merupakan implementasi **Sistem Pencatatan Ijazah Digital** berbasis **blockchain** atau **centralized immutable ledger** untuk menjamin keaslian dan integritas ijazah digital. Sistem dirancang untuk mengatasi pemalsuan ijazah dengan menyediakan mekanisme penerbitan, penyimpanan, pencabutan, dan verifikasi ijazah yang transparan dan tidak dapat diubah.
 
@@ -11,7 +11,7 @@ Ijazah diterbitkan oleh **Admin Institusi** dalam bentuk dokumen digital (PDF, g
 Sistem mendukung dua transaksi utama, yaitu **Issue Certificate** dan **Revoke Certificate**. Publik dapat melakukan verifikasi keaslian ijazah melalui website dengan memanfaatkan transparansi dan sifat immutable dari ledger. Autentikasi Admin Institusi dilakukan menggunakan mekanisme kriptografi berbasis **signature nonce challenge**.
 
 
-## Screenshots
+## 📸 Screenshots
 
 - **Home / Landing Page**
 
@@ -50,7 +50,7 @@ Sistem mendukung dua transaksi utama, yaitu **Issue Certificate** dan **Revoke C
 </div>
 
 
-## Daftar Fungsi
+## 🖋️ Daftar Fungsi
 
 ### 1) Autentikasi Admin (Institusi)
 - **generateNonce(address)**  
@@ -103,7 +103,7 @@ Sistem mendukung dua transaksi utama, yaitu **Issue Certificate** dan **Revoke C
 	Fungsi smart contract untuk mencabut ijazah.  
 	(contracts/contracts/CertificateRegistry.sol)
 
-## Cara Menjalankan Program
+## ⚙️ Cara Menjalankan Program
 ### 0. Konfigurasi Environment (.env)
 
 Sebelum menjalankan aplikasi, pastikan sudah membuat file `.env` pada masing-masing folder berikut:
@@ -168,7 +168,7 @@ Aplikasi akan berjalan di http://localhost:6173.
 npx hardhat run scripts/deploy.ts --network sepolia
 ```
 
-## Pembagian Kerja
+## 📥 Pembagian Kerja
 
 | Nama                        | NIM        | Tugas Spesifik                                                                                      |
 |-----------------------------|------------|-----------------------------------------------------------------------------------------------------|
